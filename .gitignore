@@ -1,0 +1,27 @@
+# Local machine configuration
+local.properties
+
+# Gradle and Android build output
+.gradle/
+.gradle-user/
+.kotlin/
+build/
+app/build/
+dist/
+
+# Local verification captures and generated backups
+verification/
+backup-*/
+*.apk
+*.aab
+*.idsig
+
+# Root-level local verification captures
+/*.png
+/*.xml
+/*.txt
+/*.log
+
+# IDE metadata
+.idea/
+*.iml
