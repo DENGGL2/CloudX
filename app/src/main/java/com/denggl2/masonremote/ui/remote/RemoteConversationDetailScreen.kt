@@ -1135,6 +1135,19 @@ private fun DetailComposer(
             }
         }
 
+        if (attachments.isNotEmpty() || selectedSkill != null) {
+            Spacer(Modifier.height(3.dp))
+            // Keep context chips outside the glass composer so their surface does
+            // not create a second blurred layer over the input panel.
+            DetailComposerContextStrip(
+                attachments = attachments,
+                selectedSkill = selectedSkill,
+                onRemoveAttachment = onRemoveAttachment,
+                onClearSkill = onClearSkill,
+            )
+            Spacer(Modifier.height(3.dp))
+        }
+
         val panelShape = RoundedCornerShape(18.dp)
         Box(
             modifier = Modifier
@@ -1153,15 +1166,6 @@ private fun DetailComposer(
                 fallbackAlpha = 0.99f,
             )
             Column {
-                if (attachments.isNotEmpty() || selectedSkill != null) {
-                    DetailComposerContextStrip(
-                        attachments = attachments,
-                        selectedSkill = selectedSkill,
-                        onRemoveAttachment = onRemoveAttachment,
-                        onClearSkill = onClearSkill,
-                    )
-                    Spacer(Modifier.height(5.dp))
-                }
                 Row(
                     modifier = Modifier
                         .fillMaxWidth()

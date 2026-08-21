@@ -27,6 +27,7 @@ import androidx.compose.ui.composed
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.Shape
+import androidx.compose.ui.graphics.compositeOver
 import androidx.compose.ui.graphics.luminance
 import androidx.compose.ui.platform.LocalView
 import androidx.compose.ui.unit.dp
@@ -36,6 +37,7 @@ import androidx.compose.ui.window.DialogProperties
 import androidx.compose.ui.window.DialogWindowProvider
 import androidx.core.view.WindowCompat
 import androidx.core.view.WindowInsetsControllerCompat
+import androidx.compose.ui.graphics.toArgb
 
 internal val MasonSheetShape = RoundedCornerShape(topStart = 30.dp, topEnd = 30.dp)
 internal val MasonDialogShape = RoundedCornerShape(30.dp)
@@ -46,15 +48,25 @@ internal fun masonOverlayWindowInsets(): WindowInsets = WindowInsets(0, 0, 0, 0)
 @Composable
 internal fun masonSheetContainerColor(): Color = Color.Transparent
 
-internal fun Modifier.masonSheetSurface(shape: Shape = MasonSheetShape): Modifier = composed {
+internal fun Modifier.masonSheetSurface(
+    shape: Shape = MasonSheetShape,
+    includeNavigationBarPadding: Boolean = true,
+    drawEdge: Boolean = true,
+): Modifier = composed {
     val effects = LocalInterfaceEffects.current
     val surface = MaterialTheme.colorScheme.surface
+    val navigationSurface = surface.copy(
+        alpha = if (effects.backdropBlurEnabled) effects.largeSurfaceAlpha else 1f,
+    )
+    val navigationBarColor = navigationSurface
+        .compositeOver(MaterialTheme.colorScheme.background)
+        .toArgb()
     val darkTheme = MaterialTheme.colorScheme.background.luminance() < 0.5f
     val view = LocalView.current
     val dialogWindow = generateSequence(view as android.view.ViewParent?) { current ->
         (current as? android.view.View)?.parent
     }.filterIsInstance<DialogWindowProvider>().firstOrNull()?.window
-    DisposableEffect(dialogWindow, surface) {
+    DisposableEffect(dialogWindow, surface, navigationBarColor) {
         val window = dialogWindow
         val decorView = window?.decorView
         val previousNavigationBarColor = window?.navigationBarColor
@@ -72,7 +84,10 @@ internal fun Modifier.masonSheetSurface(shape: Shape = MasonSheetShape): Modifie
         if (window != null && decorView != null) {
             WindowCompat.setDecorFitsSystemWindows(window, false)
             window.addFlags(WindowManager.LayoutParams.FLAG_DRAWS_SYSTEM_BAR_BACKGROUNDS)
-            window.navigationBarColor = android.graphics.Color.TRANSPARENT
+            // The sheet dialog owns the system gesture area. Match its base
+            // material there so Android cannot add a differently colored plate
+            // below the sheet while the content is animating or blurred.
+            window.navigationBarColor = navigationBarColor
             if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.P) {
                 window.navigationBarDividerColor = android.graphics.Color.TRANSPARENT
             }
@@ -110,8 +125,12 @@ internal fun Modifier.masonSheetSurface(shape: Shape = MasonSheetShape): Modifie
     this
         .clip(shape)
         .then(material)
-        .navigationBarsPadding()
-        .floatingSurfaceEdge(shape = shape, nonGlassWidth = 0.5.dp)
+        .let { modifier ->
+            if (includeNavigationBarPadding) modifier.navigationBarsPadding() else modifier
+        }
+        .let { modifier ->
+            if (drawEdge) modifier.floatingSurfaceEdge(shape = shape, nonGlassWidth = 0.5.dp) else modifier
+        }
 }
 
 internal enum class ProgressiveBlurEdge { Top, Bottom }

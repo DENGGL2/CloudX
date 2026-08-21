@@ -10,7 +10,6 @@ import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.PaddingValues
 import androidx.compose.foundation.layout.Row
-import androidx.compose.foundation.layout.WindowInsets
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.offset
@@ -58,6 +57,9 @@ import com.denggl2.masonremote.transport.TransportMode
 import com.denggl2.masonremote.transport.displayName
 import com.denggl2.masonremote.transport.parsePairingOffer
 import com.denggl2.masonremote.ui.FigmaSvgAsset
+import com.denggl2.masonremote.ui.theme.MasonSheetShape
+import com.denggl2.masonremote.ui.theme.masonOverlayWindowInsets
+import com.denggl2.masonremote.ui.theme.masonSheetContainerColor
 import com.denggl2.masonremote.ui.theme.masonSheetSurface
 import kotlinx.coroutines.launch
 
@@ -115,14 +117,14 @@ internal fun PairingSheet(
     }
 
     ModalBottomSheet(
-            onDismissRequest = onDismiss,
-            sheetState = sheetState,
-            containerColor = Color.Transparent,
-            scrimColor = MaterialTheme.colorScheme.scrim.copy(alpha = 0.22f),
-            tonalElevation = 0.dp,
-            shape = RoundedCornerShape(topStart = 30.dp, topEnd = 30.dp),
+        onDismissRequest = onDismiss,
+        sheetState = sheetState,
+        containerColor = masonSheetContainerColor(),
+        scrimColor = MaterialTheme.colorScheme.scrim.copy(alpha = 0.22f),
+        tonalElevation = 0.dp,
+        shape = MasonSheetShape,
         dragHandle = null,
-        contentWindowInsets = { WindowInsets(0, 0, 0, 0) },
+        contentWindowInsets = { masonOverlayWindowInsets() },
     ) {
         PairingSheetContent(
             sheetHeight = sheetHeight,
@@ -191,6 +193,8 @@ private fun PairingSheetContent(
             .height(sheetHeight)
             .masonSheetSurface(
                 RoundedCornerShape(topStart = 30.dp, topEnd = 30.dp),
+                includeNavigationBarPadding = false,
+                drawEdge = false,
             ),
     ) {
         Box(

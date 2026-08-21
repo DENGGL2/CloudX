@@ -14,7 +14,6 @@ import android.os.Environment
 import android.provider.MediaStore
 import android.view.MotionEvent
 import android.view.View
-import android.view.WindowManager
 import android.webkit.WebResourceRequest
 import android.webkit.WebResourceResponse
 import android.webkit.WebSettings
@@ -24,11 +23,8 @@ import android.widget.Toast
 import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.activity.result.contract.ActivityResultContracts
 import androidx.compose.foundation.Image
-import androidx.compose.foundation.LocalIndication
 import androidx.compose.foundation.background
-import androidx.compose.foundation.clickable
 import androidx.compose.foundation.gestures.detectTransformGestures
-import androidx.compose.foundation.interaction.MutableInteractionSource
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Row
@@ -49,11 +45,11 @@ import androidx.compose.material3.Icon
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.CompositionLocalProvider
 import androidx.compose.runtime.DisposableEffect
 import androidx.compose.runtime.State
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableFloatStateOf
-import androidx.compose.runtime.mutableIntStateOf
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.produceState
 import androidx.compose.runtime.remember
@@ -75,8 +71,6 @@ import androidx.compose.ui.input.pointer.pointerInteropFilter
 import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.layout.onSizeChanged
 import androidx.compose.ui.platform.LocalContext
-import androidx.compose.ui.platform.LocalDensity
-import androidx.compose.ui.platform.LocalView
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.IntSize
@@ -86,13 +80,16 @@ import androidx.compose.ui.unit.sp
 import androidx.compose.ui.viewinterop.AndroidView
 import androidx.core.content.ContextCompat
 import androidx.core.content.FileProvider
-import androidx.core.view.WindowCompat
-import androidx.core.view.ViewCompat
-import androidx.core.view.WindowInsetsCompat
-import androidx.core.view.WindowInsetsControllerCompat
+import androidx.compose.ui.zIndex
+import com.denggl2.masonremote.ui.chat.ChatBackdropBlur
+import com.denggl2.masonremote.ui.chat.ChatGlassMaterial
+import com.denggl2.masonremote.ui.chat.ChatSurfaceRole
+import com.denggl2.masonremote.ui.chat.LocalChatBackdropState
+import com.denggl2.masonremote.ui.chat.captureChatBackdrop
+import com.denggl2.masonremote.ui.chat.glassClickable
 import com.denggl2.masonremote.ui.chat.masonGlassShadow
+import com.denggl2.masonremote.ui.chat.rememberChatBackdropState
 import com.denggl2.masonremote.ui.theme.LocalInterfaceEffects
-import com.denggl2.masonremote.ui.theme.floatingSurfaceEdge
 import java.io.ByteArrayInputStream
 import java.io.File
 import java.util.Locale
@@ -132,19 +129,28 @@ internal fun RemoteImagePreviewDialog(
     var scale by remember(image.attachmentId) { mutableFloatStateOf(MIN_IMAGE_SCALE) }
     var offset by remember(image.attachmentId) { mutableStateOf(Offset.Zero) }
     var viewportSize by remember(image.attachmentId) { mutableStateOf(IntSize.Zero) }
+    val effects = LocalInterfaceEffects.current
+    val backdropState = rememberChatBackdropState(effects.backdropBlurEnabled)
 
-    androidx.compose.ui.window.Dialog(
-        onDismissRequest = onDismiss,
-        properties = androidx.compose.ui.window.DialogProperties(usePlatformDefaultWidth = false),
+    Box(
+        modifier = Modifier
+            .fillMaxSize()
+            .remotePreviewMaterial()
+            .clipToBounds()
+            .zIndex(100f),
     ) {
-        Box(
-            modifier = Modifier
-                .fillMaxSize()
-                .remotePreviewMaterial()
-                .clipToBounds(),
-        ) {
-            RemotePreviewWindowEffects()
-            when (val state = bitmapState) {
+        CompositionLocalProvider(LocalChatBackdropState provides backdropState) {
+            Box(
+                modifier = Modifier
+                    .fillMaxSize()
+                    .clipToBounds(),
+            ) {
+                Box(
+                    modifier = Modifier
+                        .fillMaxSize()
+                        .captureChatBackdrop(backdropState),
+                ) {
+                    when (val state = bitmapState) {
                 RemoteBitmapState.Loading -> CircularProgressIndicator(
                     modifier = Modifier.align(Alignment.Center),
                     color = Color.White,
@@ -222,6 +228,7 @@ internal fun RemoteImagePreviewDialog(
                     )
                 }
             }
+            }
 
             Row(
                 modifier = Modifier
@@ -255,7 +262,8 @@ internal fun RemoteImagePreviewDialog(
             Row(
                 modifier = Modifier
                     .align(Alignment.BottomCenter)
-                    .padding(bottom = 22.dp + rememberRemotePreviewNavigationBarInset()),
+                    .navigationBarsPadding()
+                    .padding(bottom = 22.dp),
                 horizontalArrangement = Arrangement.spacedBy(16.dp),
             ) {
                 RemoteImagePreviewAction(
@@ -272,122 +280,19 @@ internal fun RemoteImagePreviewDialog(
                     onClick = onShare,
                 )
             }
+            }
         }
     }
 }
 
 @Composable
 private fun Modifier.remotePreviewMaterial(): Modifier = composed {
-    background(MaterialTheme.colorScheme.background)
-}
-
-@Composable
-private fun rememberRemotePreviewNavigationBarInset(): Dp {
-    val contentView = LocalView.current
-    val insetView = remember(contentView) {
-        generateSequence(contentView as android.view.ViewParent?) { current ->
-            (current as? android.view.View)?.parent
-        }.filterIsInstance<androidx.compose.ui.window.DialogWindowProvider>()
-            .firstOrNull()
-            ?.window
-            ?.decorView
-            ?: contentView
-    }
-    val density = LocalDensity.current
-    var bottomInsetPx by remember(insetView) { mutableIntStateOf(0) }
-
-    DisposableEffect(insetView) {
-        fun updateInset() {
-            val runtimeInset = ViewCompat.getRootWindowInsets(insetView)
-                ?.getInsets(WindowInsetsCompat.Type.navigationBars())
-                ?.bottom
-                ?: insetView.rootWindowInsets?.let { rootInsets ->
-                    WindowInsetsCompat.toWindowInsetsCompat(rootInsets, insetView)
-                        .getInsets(WindowInsetsCompat.Type.navigationBars())
-                        .bottom
-                }
-                ?: 0
-            bottomInsetPx = runtimeInset.takeIf { it > 0 }
-                ?: insetView.resources.getIdentifier(
-                    "navigation_bar_height",
-                    "dimen",
-                    "android",
-                ).takeIf { it != 0 }
-                    ?.let(insetView.resources::getDimensionPixelSize)
-                ?: 0
-        }
-
-        val layoutListener = android.view.ViewTreeObserver.OnGlobalLayoutListener {
-            updateInset()
-        }
-        updateInset()
-        insetView.viewTreeObserver.addOnGlobalLayoutListener(layoutListener)
-        insetView.post { updateInset() }
-        onDispose {
-            if (insetView.viewTreeObserver.isAlive) {
-                insetView.viewTreeObserver.removeOnGlobalLayoutListener(layoutListener)
-            }
-        }
-    }
-
-    return with(density) { bottomInsetPx.toDp() }
-}
-
-@Composable
-private fun RemotePreviewWindowEffects() {
-    val view = LocalView.current
-    val darkTheme = MaterialTheme.colorScheme.background.luminance() < 0.5f
-    val dialogWindow = generateSequence(view as android.view.ViewParent?) { current ->
-        (current as? android.view.View)?.parent
-    }.filterIsInstance<androidx.compose.ui.window.DialogWindowProvider>().firstOrNull()?.window
-    DisposableEffect(dialogWindow, darkTheme) {
-        val window = dialogWindow
-        val decorView = window?.decorView
-        val previousStatusBarColor = window?.statusBarColor
-        val previousNavigationBarColor = window?.navigationBarColor
-        val previousNavigationBarDividerColor = if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.P) {
-            window?.navigationBarDividerColor
-        } else {
-            null
-        }
-        val previousContrastEnforced = if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.Q) {
-            window?.isNavigationBarContrastEnforced
-        } else {
-            null
-        }
-        val previousSystemUiVisibility = decorView?.systemUiVisibility
-        if (window != null && decorView != null) {
-            WindowCompat.setDecorFitsSystemWindows(window, false)
-            window.addFlags(WindowManager.LayoutParams.FLAG_DRAWS_SYSTEM_BAR_BACKGROUNDS)
-            window.statusBarColor = android.graphics.Color.TRANSPARENT
-            window.navigationBarColor = android.graphics.Color.TRANSPARENT
-            if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.P) {
-                window.navigationBarDividerColor = android.graphics.Color.TRANSPARENT
-            }
-            if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.Q) {
-                window.isNavigationBarContrastEnforced = false
-            }
-            decorView.systemUiVisibility = decorView.systemUiVisibility or
-                View.SYSTEM_UI_FLAG_LAYOUT_STABLE or
-                View.SYSTEM_UI_FLAG_LAYOUT_FULLSCREEN or
-                View.SYSTEM_UI_FLAG_LAYOUT_HIDE_NAVIGATION
-            WindowInsetsControllerCompat(window, decorView).apply {
-                isAppearanceLightStatusBars = !darkTheme
-                isAppearanceLightNavigationBars = !darkTheme
-            }
-        }
-        onDispose {
-            if (previousStatusBarColor != null) window?.statusBarColor = previousStatusBarColor
-            if (previousNavigationBarColor != null) window?.navigationBarColor = previousNavigationBarColor
-            if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.P && previousNavigationBarDividerColor != null) {
-                window?.navigationBarDividerColor = previousNavigationBarDividerColor
-            }
-            if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.Q && previousContrastEnforced != null) {
-                window?.isNavigationBarContrastEnforced = previousContrastEnforced
-            }
-            if (previousSystemUiVisibility != null) decorView?.systemUiVisibility = previousSystemUiVisibility
-        }
-    }
+    val effects = LocalInterfaceEffects.current
+    background(
+        MaterialTheme.colorScheme.background.copy(
+            alpha = if (effects.glassMaterialEnabled) 0.92f else 1f,
+        ),
+    )
 }
 
 @Composable
@@ -400,34 +305,27 @@ private fun RemoteImagePreviewAction(
     onClick: () -> Unit,
 ) {
     val effects = LocalInterfaceEffects.current
-    val interactionSource = remember { MutableInteractionSource() }
     Box(
         modifier = Modifier
             .size(size)
             .masonGlassShadow(cornerRadius = size / 2f)
-            .clip(CircleShape)
-            .background(
-                MaterialTheme.colorScheme.surface.copy(
-                    alpha = if (effects.glassMaterialEnabled) {
-                        effects.compactSurfaceAlpha.coerceAtLeast(0.86f)
-                    } else {
-                        0.92f
-                    },
-                ),
-            )
-            .floatingSurfaceEdge(
-                shape = CircleShape,
-                nonGlassWidth = 0.5.dp,
-                emphasizeDarkGlass = true,
-            )
-            .clickable(
-                enabled = enabled,
-                interactionSource = interactionSource,
-                indication = if (effects.glassMaterialEnabled) null else LocalIndication.current,
-                onClick = onClick,
-            ),
+            .clip(CircleShape),
         contentAlignment = Alignment.Center,
     ) {
+        ChatGlassMaterial(
+            shape = CircleShape,
+            cornerRadius = size / 2f,
+            role = ChatSurfaceRole.Compact,
+            blur = ChatBackdropBlur.Soft,
+            refraction = true,
+            blurredAlpha = effects.compactSurfaceAlpha.coerceAtLeast(0.86f),
+            fallbackAlpha = 0.92f,
+        )
+        Box(
+            modifier = Modifier
+                .fillMaxSize()
+                .glassClickable(enabled = enabled, onClick = onClick),
+        )
         if (showProgress) {
             CircularProgressIndicator(
                 modifier = Modifier.size(21.dp),
@@ -735,25 +633,32 @@ private fun RemoteSvgImagePreviewDialog(
 ) {
     val svgState by rememberRemoteSvgContent(image)
     val saveAction = rememberRemoteImageSaveAction(image)
-    androidx.compose.ui.window.Dialog(
-        onDismissRequest = onDismiss,
-        properties = androidx.compose.ui.window.DialogProperties(usePlatformDefaultWidth = false),
+    val effects = LocalInterfaceEffects.current
+    val backdropState = rememberChatBackdropState(effects.backdropBlurEnabled)
+    Box(
+        modifier = Modifier
+            .fillMaxSize()
+            .remotePreviewMaterial()
+            .clipToBounds()
+            .zIndex(100f),
     ) {
-        Box(Modifier.fillMaxSize().remotePreviewMaterial()) {
-            RemotePreviewWindowEffects()
-            when (val state = svgState) {
+        CompositionLocalProvider(LocalChatBackdropState provides backdropState) {
+            Box(Modifier.fillMaxSize()) {
+                Box(
+                    modifier = Modifier
+                        .fillMaxSize()
+                        .captureChatBackdrop(backdropState),
+                ) {
+                    when (val state = svgState) {
                 RemoteSvgState.Loading -> CircularProgressIndicator(Modifier.align(Alignment.Center), color = Color.White, strokeWidth = 2.dp)
                 is RemoteSvgState.Failed -> Text(state.message, color = Color.White.copy(alpha = 0.78f), fontSize = 13.sp, modifier = Modifier.align(Alignment.Center))
                 is RemoteSvgState.Ready -> RemoteSvgWebView(
                     svg = state.content,
                     enableZoom = true,
-                    modifier = Modifier
-                        .fillMaxSize()
-                        .statusBarsPadding()
-                        .navigationBarsPadding()
-                        .padding(top = 60.dp, bottom = 88.dp),
+                    modifier = Modifier.fillMaxSize(),
                 )
             }
+                }
             Row(
                 modifier = Modifier
                     .fillMaxWidth()
@@ -777,11 +682,13 @@ private fun RemoteSvgImagePreviewDialog(
             Row(
                 modifier = Modifier
                     .align(Alignment.BottomCenter)
-                    .padding(bottom = 22.dp + rememberRemotePreviewNavigationBarInset()),
+                    .navigationBarsPadding()
+                    .padding(bottom = 22.dp),
                 horizontalArrangement = Arrangement.spacedBy(16.dp),
             ) {
                 RemoteImagePreviewAction(Icons.Outlined.FileDownload, if (saveAction.saving) "正在保存图片" else "保存图片到本地", !saveAction.saving && svgState !is RemoteSvgState.Loading, saveAction.saving, onClick = saveAction.onSave)
                 RemoteImagePreviewAction(Icons.Outlined.Share, "分享图片", svgState !is RemoteSvgState.Loading, onClick = onShare)
+            }
             }
         }
     }
