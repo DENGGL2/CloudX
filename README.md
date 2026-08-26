@@ -1,11 +1,20 @@
 # CloudX
 
-[GitHub repository](https://github.com/DENGGL2/CloudX)
+[English](README.md) | [简体中文](README.zh-CN.md)
 
-`CloudX` is the Android client for remotely operating a supported desktop
-agent after a one-time QR pairing. The mobile client keeps the same pairing,
-device identity, permission, session, conversation, approval, and attachment
-protocol regardless of the selected network transport.
+`CloudX` is an independent, third-party Android remote-control client for
+Codex. It pairs with a supported Windows desktop agent through a one-time QR
+code, allowing Codex conversations to be viewed and operated remotely from an
+Android device. CloudX is not affiliated with or endorsed by OpenAI.
+
+The mobile client keeps the same pairing, device identity, permission, session,
+conversation, approval, and attachment protocol regardless of the selected
+network transport.
+
+## Screenshots
+
+Product screenshots will be added here. Store them under
+`docs/screenshots/` and keep captions focused on the user workflow.
 
 ## User flow
 
@@ -22,30 +31,22 @@ the device identity and authorized route after pairing, never the one-time QR
 token or nonce. A connector can revoke an authorized phone from its state store;
 expired offers and reused offers are rejected.
 
-## Build the APK
+## Build from source
 
-This checkout is version `0.1.20` (`versionCode 21`). Build the arm64 debug APK
-for a small ARM64 device package:
+Build the ARM64 debug APK with Gradle:
 
 ```powershell
 .\gradlew.bat :app:assembleDebug -Parm64Only=true
 ```
 
-The APK is written as `app/build/outputs/apk/debug/CloudX-0.1.20-arm64-v8a-debug.apk`.
-Every build also archives a non-overwriting copy under `artifacts/apks/`. If
-the same version is built again, the archive gets a `-build-2`, `-build-3`,
-and so on suffix.
-MuMu's current `emulator-5558` image accepts this arm64 package. It is a Debug
-build for internal testing until a production signing key is configured.
+The APK is written to `app/build/outputs/apk/debug/`.
 
 ### Versioning
 
-- `versionName` is the user-facing semantic version. Feature and fix packages
-  increment the patch number, for example `0.1.19` to `0.1.20`.
+- `versionName` is the user-facing semantic version. Feature and fix releases
+  increment the patch number.
 - `versionCode` is Android's monotonic update number and increases with each
-  distributed app version, for example `20` to `21`.
-- The `-build-N` suffix is only the local archive collision counter; it does
-  not change the installed app version.
+  distributed app version.
 
 ## Windows Agent prerequisites
 
@@ -73,17 +74,17 @@ including a TCP/443 endpoint when the phone network blocks UDP:
 The credentials are copied into the short-lived QR route and are never bundled
 into the APK. A Cloudflare Quick Tunnel is not a guaranteed no-VPN endpoint.
 
-## GitHub build
+## Automated builds
 
 The [GitHub Actions workflow](https://github.com/DENGGL2/CloudX/actions) builds
-and uploads only the arm64 phone Debug APK.
+and uploads the ARM64 debug APK.
 Configure Android SDK and a release signing key before publishing a formal
 signed release.
 
-## Quick start after GitHub deployment
+## Quick start
 
-GitHub hosts the source and phone APK; the Windows Agent still runs on the
-computer that will be paired. Clone this repository and run:
+Clone this repository and run the Windows Agent on the computer that will be
+paired:
 
 ```powershell
 .\desktop-connector\pair.bat
@@ -120,3 +121,15 @@ firewall restrictions.
 WebRTC conversation data uses the encrypted DataChannel (or TURN relay).
 Cloudflare is only the HTTPS signaling entry point in this mode, not the
 conversation data path.
+
+## Support and contact
+
+Use [GitHub Issues](https://github.com/DENGGL2/CloudX/issues) for bug reports,
+feature requests, and project questions. Please remove QR codes, pairing
+tokens, TURN credentials, access tokens, and other secrets before attaching
+logs or screenshots.
+
+## License
+
+CloudX is licensed under the [MIT License](LICENSE). Third-party dependencies
+and bundled assets may be subject to their own licenses.
