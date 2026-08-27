@@ -344,7 +344,7 @@ fun SettingsScreen(
                                     selectedMode = notificationMode,
                                     onModeChange = onNotificationModeChange,
                                 )
-                                SectionHeader("发送")
+                                SectionHeader("对话")
                                 MessageSendSettingsContent(
                                     selectedMode = messageSendMode,
                                     onModeChange = onMessageSendModeChange,

@@ -476,6 +476,18 @@ private suspend fun ApplicationCall.respondSafely(block: suspend () -> Any) {
                 ),
             )
         }
+    } catch (error: Exception) {
+        System.err.println(
+            "Connector request failed ${error::class.qualifiedName}: ${error.message}",
+        )
+        error.printStackTrace(System.err)
+        respond(
+            status = HttpStatusCode.BadGateway,
+            message = ProtocolErrorResponse(
+                code = "CONNECTOR_REQUEST_FAILED",
+                message = "电脑端请求失败，请查看桌面 Connector 日志",
+            ),
+        )
     }
 }
 

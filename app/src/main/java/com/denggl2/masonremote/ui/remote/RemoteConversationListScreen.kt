@@ -51,7 +51,6 @@ import androidx.compose.material.icons.outlined.Description
 import androidx.compose.material.icons.outlined.Image
 import androidx.compose.material.icons.outlined.KeyboardArrowDown
 import androidx.compose.material.icons.outlined.Settings
-import androidx.compose.material3.Button
 import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.material3.DropdownMenuItem
 import androidx.compose.material3.ExperimentalMaterial3Api
@@ -65,7 +64,6 @@ import androidx.compose.material3.pulltorefresh.PullToRefreshBox
 import androidx.compose.material3.pulltorefresh.rememberPullToRefreshState
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.CompositionLocalProvider
-import androidx.compose.runtime.DisposableEffect
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.derivedStateOf
@@ -93,7 +91,6 @@ import androidx.compose.ui.graphics.SolidColor
 import androidx.compose.ui.graphics.luminance
 import androidx.compose.ui.graphics.graphicsLayer
 import androidx.compose.ui.platform.LocalDensity
-import androidx.compose.ui.platform.LocalLifecycleOwner
 import androidx.compose.ui.platform.LocalSoftwareKeyboardController
 import androidx.compose.ui.input.pointer.pointerInput
 import androidx.compose.ui.res.vectorResource
@@ -107,10 +104,9 @@ import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.unit.IntOffset
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
-import androidx.lifecycle.Lifecycle
-import androidx.lifecycle.LifecycleEventObserver
 import com.denggl2.masonremote.R
 import com.denggl2.masonremote.ui.chat.ChatBackdropBlur
+import com.denggl2.masonremote.ui.chat.ChatGlassControl
 import com.denggl2.masonremote.ui.chat.ChatGlassMaterial
 import com.denggl2.masonremote.ui.chat.ChatSurfaceRole
 import com.denggl2.masonremote.ui.chat.LocalChatBackdropState
@@ -160,7 +156,6 @@ internal fun RemoteConversationListScreen(
 ) {
     val uiState by viewModel.uiState.collectAsState()
     var showNewConversationSheet by remember { mutableStateOf(false) }
-    val lifecycleOwner = LocalLifecycleOwner.current
     val listState = rememberLazyListState()
     val pullToRefreshState = rememberPullToRefreshState()
     var gestureRefreshActive by remember { mutableStateOf(false) }
@@ -226,28 +221,6 @@ internal fun RemoteConversationListScreen(
         showNewConversationSheet = false
         viewModel.consumeCreatedConversation()
         onConversationSelected(threadId)
-    }
-
-    DisposableEffect(lifecycleOwner, viewModel) {
-        val observer = LifecycleEventObserver { _, event ->
-            when (event) {
-                Lifecycle.Event.ON_RESUME -> {
-                    viewModel.onResume()
-                    viewModel.startExecutionEventObservation()
-                }
-                Lifecycle.Event.ON_PAUSE -> viewModel.stopExecutionEventObservation()
-                else -> Unit
-            }
-        }
-        lifecycleOwner.lifecycle.addObserver(observer)
-        if (lifecycleOwner.lifecycle.currentState.isAtLeast(Lifecycle.State.RESUMED)) {
-            viewModel.onResume()
-            viewModel.startExecutionEventObservation()
-        }
-        onDispose {
-            viewModel.stopExecutionEventObservation()
-            lifecycleOwner.lifecycle.removeObserver(observer)
-        }
     }
 
     LaunchedEffect(gestureRefreshActive) {
@@ -849,16 +822,20 @@ private fun RemoteNewConversationSheet(
                     overflow = TextOverflow.Ellipsis,
                 )
             }
-            Button(
+            ChatGlassControl(
                 onClick = onCreate,
                 enabled = canCreate,
-                modifier = Modifier.fillMaxWidth().height(48.dp),
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .height(48.dp),
                 shape = RoundedCornerShape(12.dp),
+                cornerRadius = 12.dp,
+                contentColor = MaterialTheme.colorScheme.onSurface,
             ) {
                 if (state.isCreatingConversation) {
                     CircularProgressIndicator(
                         modifier = Modifier.size(18.dp),
-                        color = MaterialTheme.colorScheme.onPrimary,
+                        color = MaterialTheme.colorScheme.onSurface,
                         strokeWidth = 1.7.dp,
                     )
                 } else {
@@ -890,16 +867,20 @@ private fun RemoteNewSelector(
     Box {
         val pillShape = RoundedCornerShape(999.dp)
         Box(
-                modifier = Modifier
-                    .height(34.dp)
-                    .clip(pillShape)
-                .background(MaterialTheme.colorScheme.onSurface.copy(alpha = 0.055f))
-                .border(
-                    width = 1.dp,
-                    color = MaterialTheme.colorScheme.outline.copy(alpha = 0.10f),
-                    shape = pillShape,
-                ),
+            modifier = Modifier
+                .height(34.dp)
+                .masonGlassShadow(cornerRadius = 17.dp, blurRadius = 10.dp)
+                .clip(pillShape),
         ) {
+            ChatGlassMaterial(
+                shape = pillShape,
+                cornerRadius = 17.dp,
+                role = ChatSurfaceRole.Compact,
+                blur = ChatBackdropBlur.Soft,
+                refraction = true,
+                blurredAlpha = 0.78f,
+                fallbackAlpha = 1f,
+            )
             Row(
                 modifier = Modifier
                     .fillMaxHeight()

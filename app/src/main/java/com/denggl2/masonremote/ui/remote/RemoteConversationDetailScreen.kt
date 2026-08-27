@@ -84,8 +84,6 @@ import androidx.compose.material.icons.outlined.Lightbulb
 import androidx.compose.material.icons.outlined.Terminal
 import androidx.compose.material.icons.outlined.Stop
 import androidx.compose.material3.CircularProgressIndicator
-import androidx.compose.material3.Button
-import androidx.compose.material3.ButtonDefaults
 import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.compose.material3.HorizontalDivider
 import androidx.compose.material3.Icon
@@ -136,6 +134,7 @@ import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import com.denggl2.masonremote.R
 import com.denggl2.masonremote.ui.chat.ChatBackdropBlur
+import com.denggl2.masonremote.ui.chat.ChatGlassControl
 import com.denggl2.masonremote.ui.chat.ChatGlassDropdown
 import com.denggl2.masonremote.ui.chat.ChatGlassMaterial
 import com.denggl2.masonremote.ui.chat.ChatSurfaceRole
@@ -1303,17 +1302,26 @@ private fun buildDetailTranscript(
         }
     }
     val items = buildList {
-        val lastUserIndex = messages.indexOfLast { it.isUser }
-        var activitiesInserted = false
-        messages.forEachIndexed { index, message ->
-            add(DetailTranscriptItem(id = "message-${message.id}", message = message))
-            if (!activitiesInserted && index == lastUserIndex && activityItems.isNotEmpty()) {
-                addAll(activityItems)
-                activitiesInserted = true
+        if (demo.running || isSending) {
+            // While active, keep the live execution group below every message.
+            messages.forEach { message ->
+                add(DetailTranscriptItem(id = "message-${message.id}", message = message))
             }
-        }
-        if (!activitiesInserted) {
             addAll(activityItems)
+        } else {
+            // Once complete, place the execution group before the final result.
+            val lastUserIndex = messages.indexOfLast { it.isUser }
+            var activitiesInserted = false
+            messages.forEachIndexed { index, message ->
+                add(DetailTranscriptItem(id = "message-${message.id}", message = message))
+                if (!activitiesInserted && index == lastUserIndex && activityItems.isNotEmpty()) {
+                    addAll(activityItems)
+                    activitiesInserted = true
+                }
+            }
+            if (!activitiesInserted) {
+                addAll(activityItems)
+            }
         }
     }
     return items
@@ -1544,7 +1552,13 @@ private fun DetailCommandSheetBlock(
     Column(verticalArrangement = Arrangement.spacedBy(5.dp)) {
         Row(verticalAlignment = Alignment.CenterVertically) {
             Text(title, color = MaterialTheme.colorScheme.onSurfaceVariant, fontSize = 12.sp, modifier = Modifier.weight(1f))
-            IconButton(onClick = onCopy, modifier = Modifier.size(30.dp)) {
+            ChatGlassControl(
+                onClick = onCopy,
+                modifier = Modifier.size(30.dp),
+                shape = CircleShape,
+                cornerRadius = 15.dp,
+                contentColor = MaterialTheme.colorScheme.onSurfaceVariant,
+            ) {
                 Icon(Icons.Outlined.ContentCopy, contentDescription = "复制$title", modifier = Modifier.size(17.dp))
             }
         }

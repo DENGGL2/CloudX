@@ -28,7 +28,6 @@ import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
-import androidx.compose.runtime.DisposableEffect
 import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableIntStateOf
@@ -41,11 +40,9 @@ import androidx.compose.runtime.setValue
 import androidx.compose.ui.graphics.toArgb
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.platform.LocalContext
-import androidx.compose.ui.platform.LocalLifecycleOwner
 import androidx.compose.ui.unit.dp
 import android.widget.Toast
-import androidx.lifecycle.Lifecycle
-import androidx.lifecycle.LifecycleEventObserver
+import androidx.compose.runtime.DisposableEffect
 import com.denggl2.masonremote.data.PairingStore
 import com.denggl2.masonremote.data.RemotePreferences
 import com.denggl2.masonremote.diagnostics.DiagnosticLog
@@ -187,7 +184,6 @@ private fun MasonRemoteApp(
     }
     var pendingNotificationPreview by remember { mutableStateOf<TaskNotificationMode?>(null) }
     val latestNotificationMode by rememberUpdatedState(notificationMode)
-    val lifecycleOwner = LocalLifecycleOwner.current
     val notificationPermissionLauncher = rememberLauncherForActivityResult(
         ActivityResultContracts.RequestPermission(),
     ) { granted ->
@@ -226,6 +222,15 @@ private fun MasonRemoteApp(
         remoteViewModel.notificationEvents.collect { event ->
             notificationManager.notifyTaskEvent(event, latestNotificationMode)
         }
+    }
+
+    DisposableEffect(remoteViewModel) {
+        // Keep the desktop status long-poll alive across detail/settings pages
+        // and while the activity is paused, so notification delivery is not
+        // tied to the conversation list being visible.
+        remoteViewModel.onResume()
+        remoteViewModel.startExecutionEventObservation()
+        onDispose { remoteViewModel.stopExecutionEventObservation() }
     }
 
     LaunchedEffect(remoteViewModel) {
@@ -274,20 +279,6 @@ private fun MasonRemoteApp(
         }
     }
 
-    DisposableEffect(lifecycleOwner, notificationManager) {
-        val observer = LifecycleEventObserver { _, event ->
-            when (event) {
-                Lifecycle.Event.ON_RESUME -> notificationManager.setAppInForeground(true)
-                Lifecycle.Event.ON_PAUSE -> notificationManager.setAppInForeground(false)
-                else -> Unit
-            }
-        }
-        lifecycleOwner.lifecycle.addObserver(observer)
-        if (lifecycleOwner.lifecycle.currentState.isAtLeast(Lifecycle.State.RESUMED)) {
-            notificationManager.setAppInForeground(true)
-        }
-        onDispose { lifecycleOwner.lifecycle.removeObserver(observer) }
-    }
     val systemDark = isSystemInDarkTheme()
     val useDarkTheme = when (themeMode) {
         RemoteThemeMode.SYSTEM -> systemDark

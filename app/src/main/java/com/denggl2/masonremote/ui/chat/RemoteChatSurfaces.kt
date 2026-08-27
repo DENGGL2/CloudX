@@ -52,6 +52,7 @@ import androidx.compose.ui.graphics.drawscope.clipPath
 import androidx.compose.ui.graphics.drawscope.translate
 import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.platform.LocalGraphicsContext
+import androidx.compose.ui.semantics.Role
 import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.unit.IntOffset
 import androidx.compose.ui.unit.IntRect
@@ -98,6 +99,7 @@ internal fun Modifier.captureChatBackdrop(state: HazeState?): Modifier =
 
 internal fun Modifier.glassClickable(
     enabled: Boolean = true,
+    role: Role? = null,
     onClick: () -> Unit,
 ): Modifier = composed {
     val effects = LocalInterfaceEffects.current
@@ -106,6 +108,7 @@ internal fun Modifier.glassClickable(
         enabled = enabled,
         interactionSource = interactionSource,
         indication = if (effects.glassMaterialEnabled) null else LocalIndication.current,
+        role = role,
         onClick = onClick,
     )
 }
@@ -195,6 +198,52 @@ internal fun BoxScope.ChatGlassMaterial(
                     nonGlassColor = borderColor,
                 ),
         )
+    }
+}
+
+@Composable
+internal fun ChatGlassControl(
+    onClick: () -> Unit,
+    modifier: Modifier = Modifier,
+    shape: Shape = RoundedCornerShape(22.dp),
+    cornerRadius: Dp = 22.dp,
+    enabled: Boolean = true,
+    contentColor: Color = MaterialTheme.colorScheme.onSurface,
+    disabledContainerColor: Color = MaterialTheme.colorScheme.surfaceVariant,
+    disabledContentColor: Color = MaterialTheme.colorScheme.onSurfaceVariant,
+    content: @Composable () -> Unit,
+) {
+    Box(
+        modifier = modifier
+            .masonGlassShadow(cornerRadius = cornerRadius)
+            .clip(shape)
+            .glassClickable(enabled = enabled, role = Role.Button, onClick = onClick),
+    ) {
+        if (enabled) {
+            ChatGlassMaterial(
+                shape = shape,
+                cornerRadius = cornerRadius,
+                role = ChatSurfaceRole.Compact,
+                blur = ChatBackdropBlur.Soft,
+                refraction = true,
+                blurredAlpha = 0.78f,
+                fallbackAlpha = 1f,
+            )
+        } else {
+            Box(
+                modifier = Modifier
+                    .matchParentSize()
+                    .background(disabledContainerColor, shape),
+            )
+        }
+        androidx.compose.runtime.CompositionLocalProvider(
+            androidx.compose.material3.LocalContentColor provides if (enabled) contentColor else disabledContentColor,
+        ) {
+            Box(
+                modifier = Modifier.fillMaxSize(),
+                contentAlignment = Alignment.Center,
+            ) { content() }
+        }
     }
 }
 

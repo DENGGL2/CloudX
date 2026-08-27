@@ -29,14 +29,9 @@ class RemoteNotificationManager(private val context: Context) {
         context.getSystemService(Context.NOTIFICATION_SERVICE) as NotificationManager
     private val mainHandler = Handler(Looper.getMainLooper())
     private val activeNotificationIds = linkedSetOf<Int>()
-    private var appInForeground = true
 
     init {
         createChannels()
-    }
-
-    fun setAppInForeground(value: Boolean) {
-        appInForeground = value
     }
 
     fun shouldRequestPostNotificationPermission(): Boolean =
@@ -67,26 +62,30 @@ class RemoteNotificationManager(private val context: Context) {
 
         val useIsland = canUseNotificationIsland(mode)
         val notificationId = PREVIEW_NOTIFICATION_ID
-        notificationManager.cancel(LIVE_UPDATE_NOTIFICATION_ID)
+        mainHandler.removeCallbacksAndMessages(PREVIEW_TOKEN)
+        notificationManager.cancel(PREVIEW_NOTIFICATION_ID)
         val previewText = "CloudX 会在电脑端任务状态变化时通知你"
-        val text = if (mode == TaskNotificationMode.ISLAND && !useIsland) {
-            "$previewText，当前设备暂不支持岛通知，已使用任务实时状态通知"
+        val islandFallback = mode == TaskNotificationMode.ISLAND && !useIsland
+        val text = if (islandFallback) {
+            "$previewText；当前系统不支持 Android 16 岛通知，已回退为常规任务通知"
         } else {
             previewText
         }
         post(
             notificationId = notificationId,
-            title = if (mode == TaskNotificationMode.ISLAND) "岛通知已选择" else "常规通知已启用",
+            title = when {
+                islandFallback -> "岛通知不可用，已回退"
+                mode == TaskNotificationMode.ISLAND -> "岛通知已选择"
+                else -> "常规通知已启用"
+            },
             text = text,
             liveUpdate = useIsland,
             progress = 35,
             shortText = if (useIsland) "岛通知" else null,
             final = false,
             threadId = null,
-            allowForeground = true,
         )
         if (useIsland) {
-            mainHandler.removeCallbacksAndMessages(PREVIEW_TOKEN)
             mainHandler.postAtTime(
                 {
                     post(
@@ -98,7 +97,6 @@ class RemoteNotificationManager(private val context: Context) {
                         shortText = "完成",
                         final = true,
                         threadId = null,
-                        allowForeground = true,
                     )
                 },
                 PREVIEW_TOKEN,
@@ -164,7 +162,6 @@ class RemoteNotificationManager(private val context: Context) {
             shortText = shortText,
             final = final,
             threadId = event.threadId,
-            allowForeground = false,
         )
         return RemoteNotificationResult(sent = sent)
     }
@@ -177,8 +174,7 @@ class RemoteNotificationManager(private val context: Context) {
     }
 
     private fun canUseNotificationIsland(mode: TaskNotificationMode): Boolean =
-        mode == TaskNotificationMode.ISLAND &&
-            Build.VERSION.SDK_INT >= 36 &&
+        mode == TaskNotificationMode.ISLAND && Build.VERSION.SDK_INT >= 36 &&
             notificationManager.canPostPromotedNotifications()
 
     private fun post(
@@ -190,11 +186,7 @@ class RemoteNotificationManager(private val context: Context) {
         shortText: String?,
         final: Boolean,
         threadId: String?,
-        allowForeground: Boolean,
     ): Boolean {
-        if (!allowForeground && appInForeground) {
-            return false
-        }
         val contentIntent = PendingIntent.getActivity(
             context,
             notificationId,
@@ -212,7 +204,9 @@ class RemoteNotificationManager(private val context: Context) {
             .setSmallIcon(R.drawable.ic_notification_mason)
             .setContentTitle(title)
             .setContentText(text)
-            .setPriority(NotificationCompat.PRIORITY_DEFAULT)
+            .setPriority(
+                if (liveUpdate) NotificationCompat.PRIORITY_HIGH else NotificationCompat.PRIORITY_DEFAULT,
+            )
             .setCategory(if (liveUpdate) NotificationCompat.CATEGORY_PROGRESS else NotificationCompat.CATEGORY_EVENT)
             .setContentIntent(contentIntent)
             .setAutoCancel(!liveUpdate || final)
@@ -220,8 +214,9 @@ class RemoteNotificationManager(private val context: Context) {
         if (liveUpdate) {
             builder
                 .setOngoing(!final)
-                .setSilent(true)
                 .setOnlyAlertOnce(true)
+                .setShowWhen(false)
+                .setProgress(100, progress.coerceIn(0, 100), false)
                 .setShortCriticalText(shortText?.take(7).orEmpty().ifBlank { "$progress%" })
                 .setStyle(
                     NotificationCompat.ProgressStyle()
@@ -248,6 +243,7 @@ class RemoteNotificationManager(private val context: Context) {
             .forEach { channel -> notificationManager.deleteNotificationChannel(channel.id) }
         notificationManager.deleteNotificationChannel(LEGACY_CHANNEL_ID)
         notificationManager.deleteNotificationChannel(LEGACY_LIVE_UPDATE_CHANNEL_ID)
+        notificationManager.deleteNotificationChannel(PREVIOUS_LIVE_UPDATE_CHANNEL_ID)
         notificationManager.createNotificationChannel(
             NotificationChannel(
                 CHANNEL_ID,
@@ -259,7 +255,7 @@ class RemoteNotificationManager(private val context: Context) {
             NotificationChannel(
                 LIVE_UPDATE_CHANNEL_ID,
                 "CloudX 任务实时状态",
-                NotificationManager.IMPORTANCE_DEFAULT,
+                NotificationManager.IMPORTANCE_HIGH,
             ).apply { description = "用于 Android 16 的任务实时通知" },
         )
     }
@@ -277,14 +273,14 @@ class RemoteNotificationManager(private val context: Context) {
 
     companion object {
         const val CHANNEL_ID = "cloudx_tool_notification"
-        const val LIVE_UPDATE_CHANNEL_ID = "cloudx_task_live_update"
+        const val LIVE_UPDATE_CHANNEL_ID = "cloudx_task_live_update_v2"
         const val CHANNEL_NAME = "CloudX 工具通知"
         const val ACTION_OPEN_TASK = "com.denggl2.masonremote.action.OPEN_TASK"
         const val EXTRA_THREAD_ID = "thread_id"
-        private const val LIVE_UPDATE_NOTIFICATION_ID = 47001
         private const val PREVIEW_NOTIFICATION_ID = 47002
         private const val LEGACY_CHANNEL_ID = "mason_tool_notification"
         private const val LEGACY_LIVE_UPDATE_CHANNEL_ID = "mason_task_live_update"
+        private const val PREVIOUS_LIVE_UPDATE_CHANNEL_ID = "cloudx_task_live_update"
         private val PREVIEW_TOKEN = Any()
     }
 }

@@ -19,8 +19,9 @@ Product screenshots will be added here. Store them under
 ## User flow
 
 1. Install the APK on Android.
-2. Start the Windows Agent with `desktop-connector\pair.bat`.
-3. The Agent asks for one transport:
+2. Start the Windows Agent with `desktop-connector\pair.bat` (Cloudflare by
+   default; pass `2` for WebRTC Direct).
+3. Use the matching transport:
    - `Cloudflare Tunnel`: Quick Tunnel, no domain or token; the URL changes after restart, so scan again.
    - `WebRTC Direct`: direct encrypted DataChannel when NAT allows it; the launcher starts a public HTTPS signaling entry point.
 4. Select the same transport on the phone and tap `开始`.
@@ -90,12 +91,12 @@ paired:
 .\desktop-connector\pair.bat
 ```
 
-The launcher asks which mode to use every time. Choose `1` for Cloudflare
-Tunnel or `2` for RTC Direct. In RTC mode it starts the bundled signaling
+The launcher starts without a console window and uses Cloudflare Tunnel by
+default. Pass `2` for RTC Direct. In RTC mode it starts the bundled signaling
 service and exposes only that signaling service through a Cloudflare Quick
-Tunnel; it then prints a fresh QR code. The phone must select the same mode
-before tapping `开始`. A new QR file and a new Quick Tunnel URL are created on
-each run, so an old QR code is never reused.
+Tunnel; it then opens a fresh QR code image. The phone must select the same
+mode before tapping `开始`. A new QR file and a new Quick Tunnel URL are
+created on each run, so an old QR code is never reused.
 
 For reliable RTC connections across restrictive networks, configure short-
 lived TURN credentials before starting the launcher:

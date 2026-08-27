@@ -3,15 +3,23 @@
 This is the Windows-side pairing service for the `CloudX` Android app.
 It is intentionally kept under this repository as a separate project folder.
 
-Run `pair.bat` when you need a QR code. The command always asks which transport
-to use before starting:
+Run `pair.bat` when you need a QR code. It starts without a console window and
+uses Cloudflare Tunnel by default. Pass `2` to use WebRTC Direct:
+
+```powershell
+.\desktop-connector\pair.bat       # Cloudflare Tunnel
+.\desktop-connector\pair.bat 2     # WebRTC Direct
+```
+
+The available transports are:
 
 1. Cloudflare Tunnel: creates a public Quick Tunnel and QR code.
 2. WebRTC Direct: starts the bundled signaling service, creates a public
    Cloudflare Quick Tunnel for signaling, and generates the QR code.
 
 The phone must select the same transport before scanning. The QR bootstrap is
-short-lived; the command prints the expiry time and opens the generated PNG.
+short-lived; the launcher opens the generated PNG automatically. For diagnostic
+output, run `pair.ps1 -SelectedMode 1` directly from a PowerShell window.
 
 Prerequisites:
 

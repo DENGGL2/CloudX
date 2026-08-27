@@ -17,8 +17,9 @@
 ## 使用流程
 
 1. 在 Android 上安装 APK。
-2. 在需要配对的 Windows 电脑上启动 `desktop-connector\pair.bat`。
-3. 桌面端选择一种传输方式：
+2. 在需要配对的 Windows 电脑上启动 `desktop-connector\pair.bat`（默认
+   Cloudflare；传入 `2` 使用 WebRTC Direct）。
+3. 使用对应的传输方式：
    - `Cloudflare Tunnel`：Quick Tunnel，不需要域名或令牌；重启后地址会变化，需要重新扫码。
    - `WebRTC Direct`：在网络条件允许时使用直接加密 DataChannel；启动器会提供公开的 HTTPS 信令入口。
 4. 手机端选择相同的传输方式，点击 `开始`。
@@ -80,10 +81,11 @@ Tunnel 不能保证在所有网络环境下都无需 VPN。
 .\desktop-connector\pair.bat
 ```
 
-启动器每次运行都会询问模式。选择 `1` 使用 Cloudflare Tunnel，选择 `2` 使用
-RTC Direct。RTC 模式会启动仓库内的信令服务，并通过 Cloudflare Quick Tunnel
-只暴露信令服务，然后输出新的二维码。手机端必须选择相同模式后再点击 `开始`。
-每次运行都会生成新的二维码文件和新的 Quick Tunnel 地址，不会重复使用旧二维码。
+启动器不会弹出控制台窗口，默认使用 Cloudflare Tunnel；传入 `2` 使用 RTC
+Direct。RTC 模式会启动仓库内的信令服务，并通过 Cloudflare Quick Tunnel 只
+暴露信令服务，然后自动打开新的二维码图片。手机端必须选择相同模式后再点击
+`开始`。每次运行都会生成新的二维码文件和新的 Quick Tunnel 地址，不会重复
+使用旧二维码。
 
 如需提高受限网络下的 RTC 连接成功率，请在启动器运行前配置短时有效的 TURN
 凭据：

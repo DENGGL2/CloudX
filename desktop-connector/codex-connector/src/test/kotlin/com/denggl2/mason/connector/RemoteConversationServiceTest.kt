@@ -354,8 +354,8 @@ class RemoteConversationServiceTest {
             assertEquals(null, started.turnId)
             assertEquals(RemoteExecutionStatus.RUNNING, started.status)
             assertEquals(RemoteMessageDelivery.QUEUED, started.delivery)
-            assertEquals(null, api.queuedText)
-            assertEquals(listOf("thread/resume", "turn/start"), api.callOrder)
+            assertEquals("手机消息", api.queuedText)
+            assertEquals(listOf("thread/resume", "turn/start", "queue"), api.callOrder)
         } finally {
             service.close()
         }
@@ -385,6 +385,32 @@ class RemoteConversationServiceTest {
     }
 
     @Test
+    fun sendsExplicitQueuePlainTextToCodexQueueWhileTurnIsActive() = withStore { store ->
+        val api = FakeRemoteControlApi(readResponse = activeThreadResponse())
+        val service = RemoteConversationService(api, store)
+
+        try {
+            val result = runBlocking {
+                service.sendMessage(
+                    deviceId = "phone-1",
+                    threadId = "thread-1",
+                    request = RemoteMessageRequest(
+                        text = "排队消息",
+                        deliveryMode = RemoteMessageDeliveryMode.QUEUE,
+                    ),
+                )
+            }
+
+            assertEquals(RemoteMessageDelivery.QUEUED, result.delivery)
+            assertEquals("排队消息", api.queuedText)
+            assertEquals(listOf("queue"), api.callOrder)
+            assertTrue(api.startedInputs.isEmpty())
+        } finally {
+            service.close()
+        }
+    }
+
+    @Test
     fun fallsBackToQueueWhenActiveTurnCannotBeSteered() = withStore { store ->
         val api = FakeRemoteControlApi(
             readResponse = json(
@@ -406,8 +432,8 @@ class RemoteConversationServiceTest {
             }
 
             assertEquals(RemoteMessageDelivery.QUEUED, result.delivery)
-            assertEquals(null, api.queuedText)
-            assertEquals(listOf("turn/steer"), api.callOrder)
+            assertEquals("自动排队", api.queuedText)
+            assertEquals(listOf("turn/steer", "queue"), api.callOrder)
         } finally {
             service.close()
         }
@@ -536,6 +562,7 @@ class RemoteConversationServiceTest {
     fun dispatchesQueuedImageAndFileAfterWriterIsReleased() = withStore { store ->
         val api = FakeRemoteControlApi(
             readResponse = activeThreadResponse(),
+            queueError = UnsupportedOperationException("Codex queue is unavailable"),
         )
         val service = RemoteConversationService(
             api = api,
@@ -602,6 +629,7 @@ class RemoteConversationServiceTest {
     fun queuedMessagesStayFifoAndRetryDoesNotDuplicateTheHead() = withStore { store ->
         val api = FakeRemoteControlApi(
             readResponse = activeThreadResponse(),
+            queueError = UnsupportedOperationException("Codex queue is unavailable"),
         )
         val service = RemoteConversationService(
             api = api,
@@ -669,6 +697,7 @@ class RemoteConversationServiceTest {
     fun keepsQueuedMessageWhenFirstDispatchHitsWriterConflict() = withStore { store ->
         val api = FakeRemoteControlApi(
             readResponse = activeThreadResponse(),
+            queueError = UnsupportedOperationException("Codex queue is unavailable"),
         )
         val service = RemoteConversationService(
             api = api,
@@ -1827,6 +1856,7 @@ private class FakeRemoteControlApi(
     ),
     var startTurnError: Throwable? = null,
     var steerTurnError: Throwable? = null,
+    var queueError: Throwable? = null,
 ) : CodexRemoteControlApi {
     val callOrder = mutableListOf<String>()
     var resumedThreadId: String? = null
@@ -1956,6 +1986,7 @@ private class FakeRemoteControlApi(
 
     override suspend fun queueTextTurn(threadId: String, text: String): JsonElement {
         callOrder += "queue"
+        queueError?.let { throw it }
         queuedText = text
         return json("""{"queued":true}""")
     }

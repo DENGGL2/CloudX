@@ -706,10 +706,7 @@ class RemoteConversationService(
             allowQueue &&
             request.deliveryMode != RemoteMessageDeliveryMode.STEER
         ) {
-            enqueueMessage(prepared)
-            return MessageDispatchAttempt.Queued(
-                queuedResult(threadId, currentExecution),
-            )
+            return queuePreparedMessage(prepared, currentExecution, controlApi)
         }
         if (executionIsActive) return MessageDispatchAttempt.Waiting
 
@@ -720,6 +717,12 @@ class RemoteConversationService(
             // same writer conflict on a repeated resume. Let turn/start decide
             // whether this connection can continue controlling it.
             if (!error.isActiveWriterConflict()) throw error
+            if (
+                allowQueue &&
+                request.deliveryMode == RemoteMessageDeliveryMode.QUEUE
+            ) {
+                return queuePreparedMessage(prepared, currentExecution, controlApi)
+            }
         }
         val response = try {
             controlApi.startTurn(
@@ -732,10 +735,7 @@ class RemoteConversationService(
         } catch (error: CodexRpcException) {
             if (!error.isActiveWriterConflict()) throw error
             if (allowQueue && request.deliveryMode != RemoteMessageDeliveryMode.STEER) {
-                enqueueMessage(prepared)
-                return MessageDispatchAttempt.Queued(
-                    queuedResult(threadId, currentExecution),
-                )
+                return queuePreparedMessage(prepared, currentExecution, controlApi)
             }
             return MessageDispatchAttempt.Waiting
         }
@@ -781,6 +781,43 @@ class RemoteConversationService(
     private fun CodexRpcException.isActiveWriterConflict(): Boolean =
         message.contains("active writer", ignoreCase = true) ||
             message.contains("currently controlled", ignoreCase = true)
+
+    private suspend fun queuePreparedMessage(
+        prepared: PreparedRemoteMessage,
+        currentExecution: RemoteExecutionSnapshot,
+        controlApi: CodexRemoteControlApi,
+    ): MessageDispatchAttempt.Queued {
+        if (prepared.canUseCodexQueue()) {
+            try {
+                controlApi.queueTextTurn(
+                    threadId = prepared.threadId,
+                    text = prepared.request.text,
+                )
+                println("MASON codex queue accepted threadId=${prepared.threadId}")
+                return MessageDispatchAttempt.Queued(
+                    queuedResult(prepared.threadId, currentExecution),
+                )
+            } catch (_: UnsupportedOperationException) {
+                // Keep the local FIFO fallback for older Codex builds.
+            }
+        }
+        enqueueMessage(prepared)
+        return MessageDispatchAttempt.Queued(
+            queuedResult(prepared.threadId, currentExecution),
+        )
+    }
+
+    private fun PreparedRemoteMessage.canUseCodexQueue(): Boolean =
+        request.attachmentIds.isEmpty() &&
+            request.skill == null &&
+            request.modelId == null &&
+            request.reasoningEffort == null &&
+            request.permissionProfileId == null &&
+            input.singleOrNull()?.let { element ->
+                val textInput = element as? JsonObject
+                textInput?.get("type")?.jsonPrimitive?.content == "text" &&
+                    textInput["text"]?.jsonPrimitive?.content == request.text
+            } == true
 
     private fun RemoteMessageRequest.canUseTurnSteer(): Boolean =
         modelId == null &&

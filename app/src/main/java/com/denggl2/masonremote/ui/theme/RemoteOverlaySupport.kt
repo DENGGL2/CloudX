@@ -28,7 +28,6 @@ import androidx.compose.ui.composed
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.Shape
-import androidx.compose.ui.graphics.compositeOver
 import androidx.compose.ui.graphics.luminance
 import androidx.compose.ui.platform.LocalView
 import androidx.compose.ui.unit.dp
@@ -64,14 +63,8 @@ internal fun Modifier.masonSheetSurface(
     includeNavigationBarPadding: Boolean = true,
     drawEdge: Boolean = true,
 ): Modifier = composed {
-    val effects = LocalInterfaceEffects.current
     val surface = MaterialTheme.colorScheme.surface
-    val navigationSurface = surface.copy(
-        alpha = if (effects.backdropBlurEnabled) effects.largeSurfaceAlpha else 1f,
-    )
-    val navigationBarColor = navigationSurface
-        .compositeOver(MaterialTheme.colorScheme.background)
-        .toArgb()
+    val navigationBarColor = surface.toArgb()
     val darkTheme = MaterialTheme.colorScheme.background.luminance() < 0.5f
     val view = LocalView.current
     val dialogWindow = generateSequence(view as android.view.ViewParent?) { current ->
@@ -121,21 +114,9 @@ internal fun Modifier.masonSheetSurface(
             if (previousSystemUiVisibility != null) decorView?.systemUiVisibility = previousSystemUiVisibility
         }
     }
-    val material = if (effects.backdropBlurEnabled) {
-        Modifier
-            .windowBackdropMaterial(
-                enabled = true,
-                blurRadius = effects.resolveBackdropBlurRadius(nonGlassRadius = 40.dp),
-                fallbackColor = surface,
-                effectAlpha = effects.backdropEffectAlpha,
-            )
-            .background(surface.copy(alpha = effects.largeSurfaceAlpha))
-    } else {
-        Modifier.background(surface)
-    }
     this
         .clip(shape)
-        .then(material)
+        .background(surface)
         .let { modifier ->
             if (includeNavigationBarPadding) modifier.navigationBarsPadding() else modifier
         }
