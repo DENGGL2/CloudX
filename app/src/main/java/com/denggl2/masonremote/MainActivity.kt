@@ -86,9 +86,9 @@ class MainActivity : ComponentActivity() {
         debugThreadId.value = intent.debugThreadId()
         debugList.value = intent.debugList()
         enableEdgeToEdge()
-        // The chat composer consumes IME insets itself. Do not let the platform pan
-        // the whole conversation window when the keyboard becomes visible.
-        window.setSoftInputMode(WindowManager.LayoutParams.SOFT_INPUT_ADJUST_NOTHING)
+        // Resize the content viewport when the IME opens so the transcript and
+        // composer can stay inside the visible area together.
+        window.setSoftInputMode(WindowManager.LayoutParams.SOFT_INPUT_ADJUST_RESIZE)
         setContent {
             MasonRemoteApp(
                 notificationThreadId = notificationThreadId.value,

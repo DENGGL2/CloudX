@@ -26,9 +26,11 @@ import androidx.compose.runtime.DisposableEffect
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.composed
 import androidx.compose.ui.draw.clip
+import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.Shape
 import androidx.compose.ui.graphics.luminance
+import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.platform.LocalView
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
@@ -42,6 +44,7 @@ import androidx.compose.ui.graphics.toArgb
 internal val MasonSheetShape = RoundedCornerShape(topStart = 30.dp, topEnd = 30.dp)
 internal val MasonDialogShape = RoundedCornerShape(30.dp)
 internal const val MASON_OVERLAY_SCRIM_ALPHA = 0.12f
+internal const val MASON_SHEET_SCRIM_ALPHA = 0.02f
 internal const val MASON_DIALOG_ACTION_ALPHA = 0.90f
 
 @Composable
@@ -61,9 +64,21 @@ internal fun masonSheetContainerColor(): Color = Color.Transparent
 internal fun Modifier.masonSheetSurface(
     shape: Shape = MasonSheetShape,
     includeNavigationBarPadding: Boolean = true,
-    drawEdge: Boolean = true,
+    drawEdge: Boolean = false,
 ): Modifier = composed {
     val surface = MaterialTheme.colorScheme.surface
+    val sheetEdgeBlendHeight = with(LocalDensity.current) { 3.dp.toPx() }
+    // Keep the matte ramp subtle so the drag handle does not sit in a white band.
+    // The sheet remains opaque below the ramp; no blur or refraction is used.
+    val sheetSurfaceBrush = Brush.verticalGradient(
+        colorStops = arrayOf(
+            0f to surface.copy(alpha = 0f),
+            0.42f to surface.copy(alpha = 0.30f),
+            1f to surface,
+        ),
+        startY = 0f,
+        endY = sheetEdgeBlendHeight,
+    )
     val navigationBarColor = surface.toArgb()
     val darkTheme = MaterialTheme.colorScheme.background.luminance() < 0.5f
     val view = LocalView.current
@@ -116,7 +131,7 @@ internal fun Modifier.masonSheetSurface(
     }
     this
         .clip(shape)
-        .background(surface)
+        .background(sheetSurfaceBrush, shape)
         .let { modifier ->
             if (includeNavigationBarPadding) modifier.navigationBarsPadding() else modifier
         }

@@ -55,6 +55,7 @@ import androidx.compose.foundation.layout.union
 import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.layout.widthIn
 import androidx.compose.foundation.layout.windowInsetsPadding
+import androidx.compose.foundation.horizontalScroll
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.LazyRow
 import androidx.compose.foundation.lazy.items
@@ -77,6 +78,7 @@ import androidx.compose.material.icons.outlined.ContentCopy
 import androidx.compose.material.icons.outlined.Description
 import androidx.compose.material.icons.outlined.Edit
 import androidx.compose.material.icons.outlined.Extension
+import androidx.compose.material.icons.outlined.FileDownload
 import androidx.compose.material.icons.outlined.Image
 import androidx.compose.material.icons.outlined.KeyboardArrowDown
 import androidx.compose.material.icons.outlined.Language
@@ -109,16 +111,19 @@ import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
+import androidx.compose.ui.draw.drawBehind
 import androidx.compose.ui.draw.rotate
 import androidx.compose.ui.focus.FocusRequester
 import androidx.compose.ui.focus.focusRequester
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.Brush
+import androidx.compose.ui.graphics.PathEffect
 import androidx.compose.ui.graphics.SolidColor
 import androidx.compose.ui.graphics.asImageBitmap
 import androidx.compose.ui.graphics.luminance
 import androidx.compose.ui.graphics.vector.ImageVector
 import androidx.compose.ui.layout.ContentScale
+import androidx.compose.ui.layout.FirstBaseline
 import androidx.compose.ui.layout.onSizeChanged
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.platform.LocalDensity
@@ -130,6 +135,7 @@ import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.TextStyle
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.Dp
+import androidx.compose.ui.unit.TextUnit
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import com.denggl2.masonremote.R
@@ -144,7 +150,7 @@ import com.denggl2.masonremote.ui.chat.glassClickable
 import com.denggl2.masonremote.ui.chat.masonGlassShadow
 import com.denggl2.masonremote.ui.chat.rememberChatBackdropState
 import com.denggl2.masonremote.ui.theme.LocalInterfaceEffects
-import com.denggl2.masonremote.ui.theme.MASON_OVERLAY_SCRIM_ALPHA
+import com.denggl2.masonremote.ui.theme.MASON_SHEET_SCRIM_ALPHA
 import com.denggl2.masonremote.ui.theme.MasonSheetShape
 import com.denggl2.masonremote.ui.theme.masonOverlayWindowInsets
 import com.denggl2.masonremote.ui.theme.masonSheetContainerColor
@@ -167,7 +173,6 @@ import com.denggl2.masonremote.transport.ConnectorReasoningEffortOption
 import com.denggl2.masonremote.transport.ConnectorSkillOption
 import com.denggl2.masonremote.transport.ConnectorSkillSelection
 import com.denggl2.masonremote.transport.ConnectorExecutionStatus
-import com.denggl2.masonremote.transport.ConnectorMessageDelivery
 import com.denggl2.masonremote.transport.ConnectorMessageDeliveryMode
 import com.denggl2.masonremote.transport.PairedConnector
 import com.denggl2.masonremote.transport.RemoteConnectorClient
@@ -176,8 +181,11 @@ import com.denggl2.masonremote.transport.isCloudXVisible
 import com.denggl2.masonremote.ui.settings.RemoteMessageSendMode
 import java.io.ByteArrayOutputStream
 import java.io.File
+import java.nio.ByteBuffer
+import java.nio.charset.CodingErrorAction
 import java.util.Locale
 import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.isActive
 import kotlinx.coroutines.launch
@@ -233,6 +241,7 @@ private data class DetailDemo(
     val messages: List<DetailMessage>,
     val activities: List<DetailActivity>,
     val running: Boolean,
+    val executionStatus: ConnectorExecutionStatus? = null,
     val activeActivityTitle: String? = null,
     val activeActivityText: String? = null,
     val startedAt: Long? = null,
@@ -254,12 +263,75 @@ private data class PendingDetailAttachment(
 )
 
 private val DetailTopFadeHeight = 30.dp
+private val DetailComposerSeparation = 28.dp
+private val DetailActivityToggleHeight = 52.dp
 private const val MaxVisibleDetailActivities = 9
 private const val MaxVisibleDetailMessages = 40
 private const val MaxDetailMessageCharacters = 4_000
 private const val MaxPendingDetailAttachments = 5
 private const val MaxDetailAttachmentBytes = 20L * 1024L * 1024L
-private const val DETAIL_POLL_INTERVAL_MILLIS = 1_500L
+private const val MaxRemoteFilePreviewBytes = 1L * 1024L * 1024L
+private const val DETAIL_ACTIVE_POLL_INTERVAL_MILLIS = 750L
+private const val DETAIL_IDLE_POLL_INTERVAL_MILLIS = 1_500L
+
+private val RemoteCodePreviewExtensions = setOf(
+    "bash",
+    "bat",
+    "c",
+    "cc",
+    "conf",
+    "cpp",
+    "cs",
+    "css",
+    "csv",
+    "dockerfile",
+    "gradle",
+    "h",
+    "hpp",
+    "htm",
+    "html",
+    "ini",
+    "java",
+    "js",
+    "json",
+    "jsx",
+    "kt",
+    "kts",
+    "less",
+    "log",
+    "md",
+    "mjs",
+    "properties",
+    "ps1",
+    "py",
+    "rb",
+    "rs",
+    "scss",
+    "sh",
+    "sql",
+    "swift",
+    "toml",
+    "ts",
+    "tsx",
+    "txt",
+    "xml",
+    "yaml",
+    "yml",
+    "zsh",
+)
+
+private val RemoteCodePreviewMimeTypes = setOf(
+    "application/graphql",
+    "application/javascript",
+    "application/json",
+    "application/sql",
+    "application/typescript",
+    "application/x-javascript",
+    "application/x-sh",
+    "application/x-yaml",
+    "application/xml",
+    "application/yaml",
+)
 
 @Composable
 internal fun RemoteConversationDetailScreen(
@@ -288,6 +360,9 @@ internal fun RemoteConversationDetailScreen(
     var loadingAttachmentId by remember(threadId) { mutableStateOf<String?>(null) }
     var previewImage by remember(threadId) { mutableStateOf<RemotePreviewImage?>(null) }
     var fileAttachment by remember(threadId) { mutableStateOf<ConnectorConversationAttachmentPayload?>(null) }
+    var filePreviewState by remember(threadId) {
+        mutableStateOf<RemoteFilePreviewState>(RemoteFilePreviewState.Unsupported)
+    }
     var commandActivity by remember(threadId) { mutableStateOf<DetailActivity?>(null) }
     var fileDownloadBusy by remember(threadId) { mutableStateOf(false) }
     var fileDownloadError by remember(threadId) { mutableStateOf<String?>(null) }
@@ -297,6 +372,7 @@ internal fun RemoteConversationDetailScreen(
     LaunchedEffect(remoteClient, threadId) {
         if (remoteClient == null || threadId.startsWith("demo-")) return@LaunchedEffect
         while (isActive) {
+            var nextPollDelayMillis = DETAIL_IDLE_POLL_INTERVAL_MILLIS
             runCatching {
                 remoteClient.readConversation(checkNotNull(pairedConnector).deviceId, threadId)
             }.onSuccess {
@@ -306,13 +382,19 @@ internal fun RemoteConversationDetailScreen(
                 )
                 remoteDetail = it
                 remoteError = null
+                if (
+                    it.executionStatus == ConnectorExecutionStatus.RUNNING ||
+                    it.executionStatus == ConnectorExecutionStatus.WAITING_FOR_APPROVAL
+                ) {
+                    nextPollDelayMillis = DETAIL_ACTIVE_POLL_INTERVAL_MILLIS
+                }
             }.onFailure {
                 DiagnosticLog.recordException("DETAIL_READ_FAILURE threadId=$threadId", it)
                 if (remoteDetail == null) {
                     remoteError = it.message ?: "无法读取电脑端对话"
                 }
             }
-            delay(DETAIL_POLL_INTERVAL_MILLIS)
+            delay(nextPollDelayMillis)
         }
     }
     LaunchedEffect(remoteClient, threadId) {
@@ -401,10 +483,9 @@ internal fun RemoteConversationDetailScreen(
     var composerOptionsChanged by remember(threadId) { mutableStateOf(false) }
     var attachments by remember(threadId) { mutableStateOf(emptyList<PendingDetailAttachment>()) }
     var isSending by remember(threadId) { mutableStateOf(false) }
-    var mobileSubmissionActive by remember(threadId) { mutableStateOf(false) }
+    var localSendingStartedAt by remember(threadId) { mutableStateOf<Long?>(null) }
     var isInterrupting by remember(threadId) { mutableStateOf(false) }
     var sendError by remember(threadId) { mutableStateOf<String?>(null) }
-    var deliveryMessage by remember(threadId) { mutableStateOf<String?>(null) }
     val listState = rememberLazyListState()
     val scope = rememberCoroutineScope()
     var scrollToBottomInProgress by remember(threadId) { mutableStateOf(false) }
@@ -420,6 +501,7 @@ internal fun RemoteConversationDetailScreen(
     val backdropState = rememberChatBackdropState(interfaceEffects.backdropBlurEnabled)
     val imeBottom = WindowInsets.ime.getBottom(LocalDensity.current)
     val detailRunning = demo.running || isSending
+    val activityStartedAt = demo.startedAt ?: localSendingStartedAt
     val transcriptItems = buildDetailTranscript(messages, demo, isSending)
     val lastTranscriptItemIndex = transcriptItems.lastIndex
     val showScrollToBottom by remember(
@@ -432,6 +514,42 @@ internal fun RemoteConversationDetailScreen(
             transcriptItems.isNotEmpty() &&
                 (listState.canScrollForward || imeBottom > 0) &&
                 !scrollToBottomInProgress
+        }
+    }
+    LaunchedEffect(fileAttachment?.attachmentId, remoteClient, pairedConnector?.deviceId, threadId) {
+        val attachment = fileAttachment ?: return@LaunchedEffect
+        if (!isRemoteCodePreviewable(attachment) || attachment.sizeBytes > MaxRemoteFilePreviewBytes) {
+            filePreviewState = RemoteFilePreviewState.Unsupported
+            return@LaunchedEffect
+        }
+        val client = remoteClient
+        val deviceId = pairedConnector?.deviceId
+        if (client == null || deviceId.isNullOrBlank() || threadId.startsWith("demo-")) {
+            filePreviewState = RemoteFilePreviewState.Unsupported
+            return@LaunchedEffect
+        }
+        filePreviewState = RemoteFilePreviewState.Loading
+        val attachmentId = attachment.attachmentId
+        val previewState = try {
+            withContext(Dispatchers.IO) {
+                val bytes = client.downloadConversationAttachment(
+                    deviceId = deviceId,
+                    threadId = threadId,
+                    attachmentId = attachmentId,
+                )
+                if (bytes.size.toLong() > MaxRemoteFilePreviewBytes) {
+                    null
+                } else {
+                    decodeRemoteText(bytes)
+                }
+            }?.let(RemoteFilePreviewState::Code) ?: RemoteFilePreviewState.Unsupported
+        } catch (error: CancellationException) {
+            throw error
+        } catch (_: Throwable) {
+            RemoteFilePreviewState.Unsupported
+        }
+        if (fileAttachment?.attachmentId == attachmentId) {
+            filePreviewState = previewState
         }
     }
 
@@ -521,16 +639,8 @@ internal fun RemoteConversationDetailScreen(
         listState.animateScrollToItem(lastTranscriptItemIndex)
     }
 
-    var submissionRunningObserved by remember(threadId) { mutableStateOf(false) }
-    LaunchedEffect(detailRunning, isSending, mobileSubmissionActive) {
-        when {
-            !mobileSubmissionActive -> submissionRunningObserved = false
-            detailRunning && !isSending -> submissionRunningObserved = true
-            !detailRunning && !isSending && submissionRunningObserved -> {
-                mobileSubmissionActive = false
-                submissionRunningObserved = false
-            }
-        }
+    LaunchedEffect(detailRunning) {
+        if (!detailRunning) localSendingStartedAt = null
     }
 
     fun sendMessage(requestedDeliveryMode: ConnectorMessageDeliveryMode = deliveryMode) {
@@ -543,16 +653,16 @@ internal fun RemoteConversationDetailScreen(
         val pendingSkill = selectedSkill
         val requestText = text.ifBlank { "已添加内容" }
         val effectiveDeliveryMode = requestedDeliveryMode
+        localSendingStartedAt = System.currentTimeMillis()
+        isSending = true
         messages = messages + DetailMessage(
             id = "user-${messages.size}-${requestText.hashCode()}",
             isUser = true,
             text = requestText,
         )
         sendError = null
-        deliveryMessage = null
         if (remoteClient == null || pairedConnector == null || threadId.startsWith("demo-")) {
             scope.launch {
-                isSending = true
                 kotlinx.coroutines.delay(550)
                 messages = messages + DetailMessage(
                     id = "assistant-${messages.size}",
@@ -562,13 +672,12 @@ internal fun RemoteConversationDetailScreen(
                 onDraftChange("")
                 attachments = emptyList()
                 selectedSkill = null
-                mobileSubmissionActive = true
                 isSending = false
+                localSendingStartedAt = null
             }
             return
         }
         scope.launch {
-            isSending = true
             runCatching {
                 val uploadedAttachments = pendingAttachments.map { pending ->
                     remoteClient.uploadAttachment(
@@ -593,12 +702,6 @@ internal fun RemoteConversationDetailScreen(
                     ),
                 )
             }.onSuccess {
-                mobileSubmissionActive = true
-                deliveryMessage = when (it.delivery) {
-                    ConnectorMessageDelivery.QUEUED -> "已排队"
-                    ConnectorMessageDelivery.STEERED -> "已插入当前任务"
-                    ConnectorMessageDelivery.STARTED -> null
-                }
                 onDraftChange("")
                 attachments = emptyList()
                 selectedSkill = null
@@ -650,6 +753,13 @@ internal fun RemoteConversationDetailScreen(
 
     fun openRemoteFile(attachment: ConnectorConversationAttachmentPayload) {
         fileDownloadError = null
+        filePreviewState = if (
+            isRemoteCodePreviewable(attachment) && attachment.sizeBytes <= MaxRemoteFilePreviewBytes
+        ) {
+            RemoteFilePreviewState.Loading
+        } else {
+            RemoteFilePreviewState.Unsupported
+        }
         fileAttachment = attachment
     }
 
@@ -721,7 +831,6 @@ internal fun RemoteConversationDetailScreen(
                     threadId = threadId,
                 )
             }.onSuccess {
-                mobileSubmissionActive = false
                 runCatching { client.readConversation(connector.deviceId, threadId) }
                     .onSuccess { remoteDetail = it }
             }.onFailure { error ->
@@ -773,7 +882,7 @@ internal fun RemoteConversationDetailScreen(
                         start = 16.dp,
                         top = topInset + 76.dp,
                         end = 16.dp,
-                        bottom = composerHeight + 16.dp,
+                        bottom = composerHeight + DetailComposerSeparation,
                     ),
                     verticalArrangement = Arrangement.spacedBy(14.dp),
                 ) {
@@ -790,6 +899,8 @@ internal fun RemoteConversationDetailScreen(
                                     DetailTranscriptActivityGroup(
                                         activities = activities,
                                         running = detailRunning,
+                                        executionStatus = demo.executionStatus,
+                                        startedAt = activityStartedAt,
                                         durationMillis = demo.durationMillis,
                                         onOpenCommand = { commandActivity = it },
                                     )
@@ -817,16 +928,6 @@ internal fun RemoteConversationDetailScreen(
                                 text = "发送失败：$error",
                                 color = MaterialTheme.colorScheme.error,
                                 fontSize = 13.sp,
-                                modifier = Modifier.padding(horizontal = 2.dp),
-                            )
-                        }
-                    }
-                    deliveryMessage?.let { message ->
-                        item(key = "delivery-status") {
-                            Text(
-                                text = message,
-                                color = MaterialTheme.colorScheme.onSurfaceVariant,
-                                fontSize = 12.sp,
                                 modifier = Modifier.padding(horizontal = 2.dp),
                             )
                         }
@@ -862,7 +963,7 @@ internal fun RemoteConversationDetailScreen(
                     },
                     modifier = Modifier
                         .align(Alignment.BottomEnd)
-                        .padding(end = 8.dp, bottom = composerHeight + 16.dp),
+                        .padding(end = 8.dp, bottom = composerHeight + DetailComposerSeparation),
                 )
             }
 
@@ -889,17 +990,16 @@ internal fun RemoteConversationDetailScreen(
                 }
             } else {
                 Box(
-                    modifier = Modifier
-                        .align(Alignment.BottomCenter)
-                        .fillMaxWidth()
-                        .windowInsetsPadding(
-                            WindowInsets.navigationBars
-                                .union(WindowInsets.ime)
-                                .only(WindowInsetsSides.Bottom),
-                        )
-                        // Measure the host after its one and only IME inset
-                        // application. The list can then use the exact same
-                        // occupied height without adding the keyboard twice.
+                        modifier = Modifier
+                            .align(Alignment.BottomCenter)
+                            .fillMaxWidth()
+                            .windowInsetsPadding(
+                                WindowInsets.navigationBars
+                                    .union(WindowInsets.ime)
+                                    .only(WindowInsetsSides.Bottom),
+                            )
+                        // The composer host owns the IME inset. The list uses its
+                        // measured height as bottom content padding.
                         .onSizeChanged { composerHostHeightPx = it.height },
                 ) {
                     DetailComposer(
@@ -918,11 +1018,9 @@ internal fun RemoteConversationDetailScreen(
                         approvalError = approvalError,
                         onResolveApproval = ::resolveApproval,
                         running = detailRunning,
-                        mobileSubmissionActive = mobileSubmissionActive,
                         sending = isSending,
                         onDraftChange = onDraftChange,
                         onSend = ::sendMessage,
-                        onSteer = { sendMessage(ConnectorMessageDeliveryMode.STEER) },
                         onInterrupt = ::interruptConversation,
                         interrupting = isInterrupting,
                         onAddImage = { imagePicker.launch(arrayOf("image/*")) },
@@ -957,44 +1055,13 @@ internal fun RemoteConversationDetailScreen(
                 )
             }
             fileAttachment?.let { attachment ->
-                MasonRemoteActionDialog(
-                    onDismissRequest = { if (!fileDownloadBusy) fileAttachment = null },
-                    title = "下载附件",
-                    body = {
-                        Column(
-                            horizontalAlignment = Alignment.CenterHorizontally,
-                            verticalArrangement = Arrangement.Center,
-                        ) {
-                            Text(
-                                attachment.name,
-                                color = MaterialTheme.colorScheme.onSurfaceVariant,
-                                fontSize = 14.sp,
-                                maxLines = 1,
-                                overflow = TextOverflow.Ellipsis,
-                            )
-                            Text(
-                                "电脑文件 · ${formatRemoteAttachmentSize(attachment.sizeBytes)}",
-                                color = MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.78f),
-                                fontSize = 12.sp,
-                            )
-                            fileDownloadError?.let {
-                                Text(
-                                    it,
-                                    color = MaterialTheme.colorScheme.error,
-                                    fontSize = 11.sp,
-                                    maxLines = 1,
-                                    overflow = TextOverflow.Ellipsis,
-                                )
-                            }
-                        }
-                    },
-                    dismissLabel = "取消",
-                    confirmLabel = "下载",
-                    confirmColor = Color.Black,
-                    confirmContentColor = Color.White,
-                    busy = fileDownloadBusy,
-                    onDismiss = { fileAttachment = null },
-                    onConfirm = { downloadRemoteFile(attachment) },
+                RemoteFileAttachmentSheet(
+                    attachment = attachment,
+                    previewState = filePreviewState,
+                    downloadBusy = fileDownloadBusy,
+                    downloadError = fileDownloadError,
+                    onDismiss = { if (!fileDownloadBusy) fileAttachment = null },
+                    onDownload = { downloadRemoteFile(attachment) },
                 )
             }
             commandActivity?.let { activity ->
@@ -1079,11 +1146,15 @@ private fun DetailMessageRow(
                             modifier = Modifier.size(18.dp),
                         )
                         Spacer(Modifier.width(9.dp))
-                        Column(modifier = Modifier.weight(1f)) {
+                        Column(
+                            modifier = Modifier.weight(1f),
+                            verticalArrangement = Arrangement.spacedBy(1.dp),
+                        ) {
                             Text(
                                 attachment.name,
                                 color = MaterialTheme.colorScheme.onSurface,
                                 fontSize = 12.sp,
+                                lineHeight = 14.sp,
                                 fontWeight = FontWeight.SemiBold,
                                 maxLines = 1,
                                 overflow = TextOverflow.Ellipsis,
@@ -1092,6 +1163,7 @@ private fun DetailMessageRow(
                                 "电脑文件 · ${formatRemoteAttachmentSize(attachment.sizeBytes)}",
                                 color = MaterialTheme.colorScheme.onSurfaceVariant,
                                 fontSize = 10.sp,
+                                lineHeight = 12.sp,
                             )
                         }
                     }
@@ -1129,6 +1201,7 @@ private fun DetailTranscriptActivityRow(
         Row(
             modifier = Modifier
                 .fillMaxWidth()
+                .heightIn(min = DetailActivityToggleHeight)
                 .then(if (hasDetails) Modifier.clickable { expanded = !expanded } else Modifier),
             horizontalArrangement = Arrangement.spacedBy(8.dp),
             verticalAlignment = Alignment.CenterVertically,
@@ -1151,27 +1224,32 @@ private fun DetailTranscriptActivityRow(
                 verticalArrangement = Arrangement.spacedBy(2.dp),
             ) {
                 Row(verticalAlignment = Alignment.CenterVertically) {
-                    Text(
-                        activity.title.ifBlank { detailActivityKindLabel(activity.kind) },
-                        color = MaterialTheme.colorScheme.onSurface,
-                        fontSize = 15.sp,
-                        fontWeight = FontWeight.Medium,
-                    )
-                    Spacer(Modifier.width(7.dp))
                     if (activity.status == DetailActivityStatus.RUNNING) {
                         RemoteShimmerStatusText(
-                            text = detailActivityStatusLabel(activity.status),
-                            baseColor = statusColor,
+                            text = detailActivityDisplayTitle(activity),
+                            baseColor = MaterialTheme.colorScheme.onSurface,
+                            fontSize = 15.sp,
+                            lineHeight = 18.sp,
+                            fontWeight = FontWeight.Medium,
                         )
-                    } else if (
-                        activity.status == DetailActivityStatus.FAILED ||
-                        activity.status == DetailActivityStatus.INTERRUPTED
-                    ) {
+                    } else {
                         Text(
-                            detailActivityStatusLabel(activity.status),
-                            color = statusColor,
-                            fontSize = 11.sp,
+                            detailActivityDisplayTitle(activity),
+                            color = MaterialTheme.colorScheme.onSurface,
+                            fontSize = 15.sp,
+                            fontWeight = FontWeight.Medium,
                         )
+                        if (
+                            activity.status == DetailActivityStatus.FAILED ||
+                                activity.status == DetailActivityStatus.INTERRUPTED
+                        ) {
+                            Spacer(Modifier.width(7.dp))
+                            Text(
+                                detailActivityStatusLabel(activity.status),
+                                color = statusColor,
+                                fontSize = 11.sp,
+                            )
+                        }
                     }
                     activity.durationMillis()?.let { durationMillis ->
                         Spacer(Modifier.width(7.dp))
@@ -1186,7 +1264,7 @@ private fun DetailTranscriptActivityRow(
             if (hasDetails) {
                 Icon(
                     imageVector = Icons.Outlined.KeyboardArrowDown,
-                    contentDescription = if (expanded) "收起${activity.title}" else "展开${activity.title}",
+                    contentDescription = if (expanded) "收起${detailActivityDisplayTitle(activity)}" else "展开${detailActivityDisplayTitle(activity)}",
                     tint = MaterialTheme.colorScheme.onSurfaceVariant,
                     modifier = Modifier
                         .size(18.dp)
@@ -1203,16 +1281,15 @@ private fun DetailTranscriptActivityRow(
                 modifier = Modifier.padding(start = 26.dp, top = 4.dp),
                 verticalArrangement = Arrangement.spacedBy(2.dp),
             ) {
-                activity.text.takeIf(String::isNotBlank)?.let { text ->
-                    RemoteMarkdown(text, compact = true)
-                }
                 if (canOpenCommand) {
-                    Text(
-                        "打开命令详情",
-                        color = MaterialTheme.colorScheme.primary,
-                        fontSize = 11.sp,
-                        modifier = Modifier.clickable { onOpenCommand(activity) },
+                    DetailCommandOutputLink(
+                        activity = activity,
+                        onOpenCommand = onOpenCommand,
                     )
+                } else {
+                    activity.text.takeIf(String::isNotBlank)?.let { text ->
+                        RemoteMarkdown(text, compact = true)
+                    }
                 }
             }
         }
@@ -1228,6 +1305,10 @@ private fun DetailActivity.durationMillis(): Long? =
 internal fun RemoteShimmerStatusText(
     text: String,
     baseColor: Color,
+    fontSize: TextUnit = 11.sp,
+    lineHeight: TextUnit = 14.sp,
+    fontWeight: FontWeight? = null,
+    modifier: Modifier = Modifier,
 ) {
     val transition = rememberInfiniteTransition(label = "detail-status-shimmer")
     val sweep by transition.animateFloat(
@@ -1241,8 +1322,11 @@ internal fun RemoteShimmerStatusText(
     )
     Text(
         text = text,
+        modifier = modifier,
         style = TextStyle(
-            fontSize = 11.sp,
+            fontSize = fontSize,
+            lineHeight = lineHeight,
+            fontWeight = fontWeight,
             brush = Brush.linearGradient(
                 colors = listOf(
                     baseColor.copy(alpha = 0.45f),
@@ -1270,33 +1354,51 @@ private fun detailActivityKindLabel(kind: DetailActivityKind): String = when (ki
     DetailActivityKind.OTHER -> "其他"
 }
 
+private fun normalizeDetailActivityTitle(title: String): String {
+    val normalized = title.trim()
+    return when (normalized) {
+        "命令执行", "执行代码", "执行过程", "执行" -> "运行命令"
+        "终端 Web 搜索", "网络搜索", "网页搜索", "搜索网页" -> "搜索网页"
+        "工具调用", "调用工具" -> "调用工具"
+        "修改文件" -> "修改文件"
+        "图片预览", "生成图片", "生成图像" -> "生成图像"
+        "查看图片", "查看图像" -> "查看图像"
+        "正在组织回复" -> "组织回复"
+        "上下文压缩中", "压缩上下文", "上下文压缩" -> "上下文压缩"
+        "其他操作", "正在处理", "处理中", "执行说明", "说明" -> ""
+        "连接任务" -> "连接"
+        "恢复任务" -> "恢复"
+        else -> normalized
+    }
+}
+
 private fun buildDetailTranscript(
     messages: List<DetailMessage>,
     demo: DetailDemo,
     isSending: Boolean,
 ): List<DetailTranscriptItem> {
+    val sourceActivities = demo.activities
+        .filterNot { it.kind == DetailActivityKind.COMMENTARY }
+        .filterNot(::isPlaceholderDetailActivity)
+    val liveActivity = detailLiveActivity(sourceActivities, demo, isSending)
+    val visibleActivities = sourceActivities
+        .map { activity ->
+            if (liveActivity != null && activity.id == liveActivity.id) liveActivity else activity
+        }
+        .let { activities ->
+            if (liveActivity != null && activities.none { it.id == liveActivity.id }) {
+                activities + liveActivity
+            } else {
+                activities
+            }
+        }
+        .takeLast(MaxVisibleDetailActivities)
     val activityItems = buildList {
-        val visibleActivities = demo.activities.takeLast(MaxVisibleDetailActivities)
         if (visibleActivities.isNotEmpty()) {
             add(
                 DetailTranscriptItem(
                     id = "activity-group",
                     activityGroup = visibleActivities,
-                ),
-            )
-        } else if (demo.running || isSending) {
-            add(
-                DetailTranscriptItem(
-                    id = "activity-live-progress",
-                    activityGroup = listOf(
-                        DetailActivity(
-                            id = "live-progress",
-                            kind = DetailActivityKind.COMMENTARY,
-                            title = if (isSending) "发送" else demo.activeActivityTitle ?: "处理中",
-                            text = if (isSending) "正在等待电脑端回复" else demo.activeActivityText.orEmpty().ifBlank { "电脑端正在执行任务。" },
-                            status = DetailActivityStatus.RUNNING,
-                        ),
-                    ),
                 ),
             )
         }
@@ -1327,34 +1429,138 @@ private fun buildDetailTranscript(
     return items
 }
 
+private fun detailLiveActivity(
+    activities: List<DetailActivity>,
+    demo: DetailDemo,
+    isSending: Boolean,
+): DetailActivity? {
+    if (!demo.running && !isSending) return null
+    val current = activities.lastOrNull { it.status == DetailActivityStatus.RUNNING }
+    val liveTitle = demo.activeActivityTitle
+        ?.let(::normalizeDetailActivityTitle)
+        ?.takeIf(::isUsefulDetailActivityTitle)
+    val liveText = demo.activeActivityText
+        ?.trim()
+        ?.takeIf(::isUsefulDetailActivityText)
+    if (current != null) {
+        val currentTitle = normalizeDetailActivityTitle(current.title)
+            .takeIf(::isUsefulDetailActivityTitle)
+        val currentText = current.text.takeIf(::isUsefulDetailActivityText)
+        return current.copy(
+            title = liveTitle ?: currentTitle ?: detailActivityFallbackTitle(current.kind),
+            text = liveText ?: currentText.orEmpty(),
+        )
+    }
+    return DetailActivity(
+        id = "activity-live-progress",
+        kind = DetailActivityKind.OTHER,
+        title = liveTitle ?: if (isSending) "发送消息" else if (liveText != null) "任务进展" else "等待电脑反馈",
+        text = liveText ?: if (isSending) "正在等待电脑端响应" else "正在等待电脑端活动更新",
+        status = DetailActivityStatus.RUNNING,
+    )
+}
+
+private fun isUsefulDetailActivityTitle(title: String): Boolean =
+    title.isNotBlank()
+
+private fun isUsefulDetailActivityText(text: String): Boolean =
+    text.isNotBlank() && text !in setOf(
+        "正在处理请求",
+        "电脑端正在执行任务。",
+        "电脑端正在执行任务",
+        "处理中",
+        "正在处理",
+    )
+
+private fun isPlaceholderDetailActivity(activity: DetailActivity): Boolean =
+    activity.kind == DetailActivityKind.OTHER &&
+        !isUsefulDetailActivityTitle(normalizeDetailActivityTitle(activity.title)) &&
+        !isUsefulDetailActivityText(activity.text) &&
+        activity.command.isNullOrBlank() &&
+        activity.output.isNullOrBlank()
+
+private fun detailActivityFallbackTitle(kind: DetailActivityKind): String = when (kind) {
+    DetailActivityKind.THINKING -> "思考"
+    DetailActivityKind.COMMAND -> "运行命令"
+    DetailActivityKind.WEB_SEARCH -> "搜索网页"
+    DetailActivityKind.TOOL -> "调用工具"
+    DetailActivityKind.FILE_CHANGE -> "修改文件"
+    DetailActivityKind.COMMENTARY -> "说明"
+    DetailActivityKind.PLAN -> "更新计划"
+    DetailActivityKind.IMAGE -> "图像"
+    DetailActivityKind.OTHER -> "任务进展"
+}
+
 @Composable
 private fun DetailTranscriptActivityGroup(
     activities: List<DetailActivity>,
     running: Boolean,
+    executionStatus: ConnectorExecutionStatus?,
+    startedAt: Long?,
     durationMillis: Long?,
     onOpenCommand: (DetailActivity) -> Unit,
 ) {
-    val hasDetails = activities.any { it.text.isNotBlank() || (!it.command.isNullOrBlank() || !it.output.isNullOrBlank()) }
-    val displayedDurationMillis = durationMillis ?: activities
-        .mapNotNull { activity ->
-            val started = activity.startedAt ?: return@mapNotNull null
-            val completed = activity.completedAt ?: return@mapNotNull null
-            started to completed
-        }
-        .takeIf { it.isNotEmpty() }
-        ?.let { ranges ->
-            (ranges.maxOf { it.second } - ranges.minOf { it.first }).coerceAtLeast(0L)
-        }
+    val hasDetails = activities.any {
+        isUsefulDetailActivityText(it.text) ||
+            !it.command.isNullOrBlank() ||
+            !it.output.isNullOrBlank()
+    } || activities.any { it.status == DetailActivityStatus.RUNNING }
     var expanded by remember(activities.map(DetailActivity::id)) { mutableStateOf(running) }
     LaunchedEffect(running) {
         expanded = running
     }
     val status = when {
+        running || executionStatus == ConnectorExecutionStatus.RUNNING ||
+            executionStatus == ConnectorExecutionStatus.WAITING_FOR_APPROVAL ->
+            DetailActivityStatus.RUNNING
+        executionStatus == ConnectorExecutionStatus.COMPLETED -> DetailActivityStatus.COMPLETED
+        executionStatus == ConnectorExecutionStatus.INTERRUPTED -> DetailActivityStatus.INTERRUPTED
+        executionStatus == ConnectorExecutionStatus.FAILED -> DetailActivityStatus.FAILED
         activities.any { it.status == DetailActivityStatus.FAILED } -> DetailActivityStatus.FAILED
         activities.any { it.status == DetailActivityStatus.INTERRUPTED } -> DetailActivityStatus.INTERRUPTED
-        running || activities.any { it.status == DetailActivityStatus.RUNNING } -> DetailActivityStatus.RUNNING
+        activities.any { it.status == DetailActivityStatus.RUNNING } -> DetailActivityStatus.RUNNING
         else -> DetailActivityStatus.COMPLETED
     }
+    val fallbackStartedAt = remember(status) { System.currentTimeMillis() }
+    val effectiveStartedAt = startedAt ?: fallbackStartedAt
+    var nowMillis by remember(effectiveStartedAt, status) {
+        mutableLongStateOf(System.currentTimeMillis())
+    }
+    LaunchedEffect(effectiveStartedAt, status) {
+        if (status != DetailActivityStatus.RUNNING) {
+            nowMillis = System.currentTimeMillis()
+            return@LaunchedEffect
+        }
+        while (isActive) {
+            nowMillis = System.currentTimeMillis()
+            delay(1_000L)
+        }
+    }
+    val runningDurationMillis = if (status == DetailActivityStatus.RUNNING) {
+        (nowMillis - effectiveStartedAt).coerceAtLeast(0L)
+    } else {
+        null
+    }
+    val currentActivity = activities.lastOrNull { it.status == DetailActivityStatus.RUNNING }
+    val previousActivities = activities.filter { it.status != DetailActivityStatus.RUNNING }
+    val displayedDurationMillis = if (status == DetailActivityStatus.RUNNING) {
+        null
+    } else {
+        durationMillis ?: activities
+            .mapNotNull { activity ->
+                val started = activity.startedAt ?: return@mapNotNull null
+                val completed = activity.completedAt ?: return@mapNotNull null
+                started to completed
+            }
+            .takeIf { it.isNotEmpty() }
+            ?.let { ranges ->
+                (ranges.maxOf { it.second } - ranges.minOf { it.first }).coerceAtLeast(0L)
+            }
+    }
+    val runningStatusTextStyle = TextStyle(
+        fontSize = 12.sp,
+        lineHeight = 16.sp,
+    )
     val statusColor = if (status == DetailActivityStatus.FAILED) {
         MaterialTheme.colorScheme.error
     } else {
@@ -1368,6 +1574,7 @@ private fun DetailTranscriptActivityGroup(
         Row(
             modifier = Modifier
                 .fillMaxWidth()
+                .heightIn(min = DetailActivityToggleHeight)
                 .then(if (hasDetails) Modifier.clickable { expanded = !expanded } else Modifier),
             horizontalArrangement = Arrangement.spacedBy(8.dp),
             verticalAlignment = Alignment.CenterVertically,
@@ -1388,46 +1595,47 @@ private fun DetailTranscriptActivityGroup(
                 modifier = Modifier.weight(1f),
                 verticalAlignment = Alignment.CenterVertically,
             ) {
-                Text(
-                    "执行记录",
-                    color = MaterialTheme.colorScheme.onSurface,
-                    fontSize = 15.sp,
-                    fontWeight = FontWeight.Medium,
-                    maxLines = 1,
-                    softWrap = false,
-                )
-                displayedDurationMillis?.let { duration ->
-                    Spacer(Modifier.width(7.dp))
-                    Text(
-                        "耗时${formatRemoteDuration(duration)}",
-                        color = statusColor,
-                        fontSize = 11.sp,
-                        maxLines = 1,
-                        softWrap = false,
-                    )
-                }
                 if (status == DetailActivityStatus.RUNNING) {
-                    Spacer(Modifier.width(7.dp))
-                    RemoteShimmerStatusText("进行中", statusColor)
-                } else if (status == DetailActivityStatus.FAILED) {
-                    Spacer(Modifier.width(7.dp))
+                    RemoteShimmerStatusText(
+                        text = "进行中 · ${formatRemoteDuration(runningDurationMillis ?: 0L)}",
+                        baseColor = MaterialTheme.colorScheme.onSurface,
+                        fontSize = runningStatusTextStyle.fontSize,
+                        lineHeight = runningStatusTextStyle.lineHeight,
+                        modifier = Modifier.alignBy(FirstBaseline),
+                    )
+                } else {
                     Text(
-                        "失败",
-                        color = statusColor,
-                        fontSize = 11.sp,
+                        detailActivityStatusLabel(status),
+                        color = if (status == DetailActivityStatus.FAILED) {
+                            statusColor
+                        } else {
+                            MaterialTheme.colorScheme.onSurface
+                        },
+                        fontSize = 15.sp,
+                        fontWeight = FontWeight.Medium,
                         maxLines = 1,
                         softWrap = false,
                     )
-                }
-                if (!expanded) {
-                    Spacer(Modifier.weight(1f))
-                    Text(
-                        "已执行${activities.count { it.kind == DetailActivityKind.COMMAND }}条",
-                        color = MaterialTheme.colorScheme.onSurfaceVariant,
-                        fontSize = 12.sp,
-                        maxLines = 1,
-                        softWrap = false,
-                    )
+                    displayedDurationMillis?.let { duration ->
+                        Spacer(Modifier.width(7.dp))
+                        Text(
+                            "耗时${formatRemoteDuration(duration)}",
+                            color = statusColor,
+                            fontSize = 11.sp,
+                            maxLines = 1,
+                            softWrap = false,
+                        )
+                    }
+                    if (!expanded) {
+                        Spacer(Modifier.weight(1f))
+                        Text(
+                            "已执行${activities.count { it.kind == DetailActivityKind.COMMAND }}条",
+                            color = MaterialTheme.colorScheme.onSurfaceVariant,
+                            fontSize = 12.sp,
+                            maxLines = 1,
+                            softWrap = false,
+                        )
+                    }
                 }
             }
             if (hasDetails) {
@@ -1450,12 +1658,62 @@ private fun DetailTranscriptActivityGroup(
                 modifier = Modifier.padding(start = 26.dp, top = 4.dp),
                 verticalArrangement = Arrangement.spacedBy(8.dp),
             ) {
-                activities.forEach { activity ->
+                currentActivity?.let { activity ->
+                    DetailTranscriptCurrentActivity(
+                        activity = activity,
+                        onOpenCommand = onOpenCommand,
+                    )
+                }
+                previousActivities.forEach { activity ->
                     DetailTranscriptActivityDetail(
                         activity = activity,
                         onOpenCommand = onOpenCommand,
                     )
                 }
+            }
+        }
+    }
+}
+
+@Composable
+private fun DetailTranscriptCurrentActivity(
+    activity: DetailActivity,
+    onOpenCommand: (DetailActivity) -> Unit,
+) {
+    val title = detailActivityDisplayTitle(activity)
+    val command = activity.command?.trim()?.takeIf(String::isNotBlank)
+    val detail = activity.text.trim().takeIf(String::isNotBlank)
+    val canOpenCommand = activity.kind == DetailActivityKind.COMMAND &&
+        (!activity.command.isNullOrBlank() || !activity.output.isNullOrBlank())
+    Column(verticalArrangement = Arrangement.spacedBy(3.dp)) {
+        RemoteShimmerStatusText(
+            text = title,
+            baseColor = MaterialTheme.colorScheme.onSurface,
+            fontSize = 13.sp,
+            lineHeight = 17.sp,
+            fontWeight = FontWeight.Medium,
+        )
+        command?.let { value ->
+            Text(
+                value,
+                color = MaterialTheme.colorScheme.onSurfaceVariant,
+                fontFamily = androidx.compose.ui.text.font.FontFamily.Monospace,
+                fontSize = 12.sp,
+                lineHeight = 16.sp,
+                maxLines = 3,
+                overflow = TextOverflow.Ellipsis,
+            )
+        }
+        if (canOpenCommand) {
+            DetailCommandOutputLink(
+                activity = activity,
+                onOpenCommand = onOpenCommand,
+                fontSize = 13.sp,
+                lineHeight = 19.sp,
+            )
+        } else {
+            detail?.takeIf { it != command }?.let { value ->
+                RemoteMarkdown(value, compact = true)
             }
         }
     }
@@ -1468,23 +1726,94 @@ private fun DetailTranscriptActivityDetail(
 ) {
     Column(verticalArrangement = Arrangement.spacedBy(2.dp)) {
         Text(
-            activity.title.ifBlank { detailActivityKindLabel(activity.kind) },
+            detailActivityDisplayTitle(activity),
             color = MaterialTheme.colorScheme.onSurface,
             fontSize = 13.sp,
             fontWeight = FontWeight.Medium,
         )
-        activity.text.takeIf(String::isNotBlank)?.let { text ->
-            RemoteMarkdown(text, compact = true)
-        }
-        if (activity.kind == DetailActivityKind.COMMAND && (!activity.command.isNullOrBlank() || !activity.output.isNullOrBlank())) {
-            Text(
-                "打开命令详情",
-                color = MaterialTheme.colorScheme.primary,
-                fontSize = 11.sp,
-                modifier = Modifier.clickable { onOpenCommand(activity) },
+        if (activity.hasCommandDetails()) {
+            DetailCommandOutputLink(
+                activity = activity,
+                onOpenCommand = onOpenCommand,
+                fontSize = 13.sp,
+                lineHeight = 19.sp,
             )
+        } else {
+            activity.text.takeIf(::isUsefulDetailActivityText)?.let { text ->
+                RemoteMarkdown(text, compact = true)
+            }
         }
     }
+}
+
+private fun DetailActivity.hasCommandDetails(): Boolean =
+    kind == DetailActivityKind.COMMAND &&
+        (!command.isNullOrBlank() || !output.isNullOrBlank())
+
+private fun DetailActivity.commandOutputPreview(): String? {
+    if (!hasCommandDetails()) return null
+    val commandText = command?.trim().orEmpty()
+    val outputText = output?.trim().orEmpty()
+    val activityText = text.trim()
+    return when {
+        isUsefulDetailActivityText(activityText) && activityText != commandText -> activityText
+        outputText.isNotBlank() -> outputText
+        commandText.isNotBlank() -> "命令输出"
+        else -> null
+    }
+}
+
+@Composable
+private fun DetailCommandOutputLink(
+    activity: DetailActivity,
+    onOpenCommand: (DetailActivity) -> Unit,
+    fontSize: TextUnit = 13.sp,
+    lineHeight: TextUnit = 19.sp,
+) {
+    val output = activity.commandOutputPreview() ?: return
+    DetailDashedLink(
+        text = output,
+        color = MaterialTheme.colorScheme.onSurface,
+        fontSize = fontSize,
+        lineHeight = lineHeight,
+        maxLines = 3,
+        onClick = { onOpenCommand(activity) },
+    )
+}
+
+@Composable
+private fun DetailDashedLink(
+    text: String,
+    onClick: () -> Unit,
+    color: Color = MaterialTheme.colorScheme.primary,
+    fontSize: TextUnit = 11.sp,
+    lineHeight: TextUnit = 14.sp,
+    maxLines: Int = 1,
+) {
+    val linkColor = color
+    Text(
+        text = text,
+        color = linkColor,
+        fontSize = fontSize,
+        lineHeight = lineHeight,
+        maxLines = maxLines,
+        overflow = TextOverflow.Ellipsis,
+        modifier = Modifier
+            .padding(bottom = 2.dp)
+            .drawBehind {
+                val y = size.height - 1.dp.toPx()
+                drawLine(
+                    color = linkColor,
+                    start = androidx.compose.ui.geometry.Offset(0f, y),
+                    end = androidx.compose.ui.geometry.Offset(size.width, y),
+                    strokeWidth = 1.dp.toPx(),
+                    pathEffect = PathEffect.dashPathEffect(
+                        floatArrayOf(3.dp.toPx(), 2.dp.toPx()),
+                    ),
+                )
+            }
+            .clickable(onClick = onClick),
+    )
 }
 
 @OptIn(ExperimentalMaterial3Api::class)
@@ -1497,7 +1826,7 @@ private fun DetailCommandSheet(activity: DetailActivity, onDismiss: () -> Unit) 
         sheetState = sheetState,
         containerColor = masonSheetContainerColor(),
         shape = MasonSheetShape,
-        scrimColor = MaterialTheme.colorScheme.scrim.copy(alpha = MASON_OVERLAY_SCRIM_ALPHA),
+        scrimColor = MaterialTheme.colorScheme.scrim.copy(alpha = MASON_SHEET_SCRIM_ALPHA),
         tonalElevation = 0.dp,
         contentWindowInsets = { masonOverlayWindowInsets() },
         dragHandle = null,
@@ -1505,7 +1834,6 @@ private fun DetailCommandSheet(activity: DetailActivity, onDismiss: () -> Unit) 
         Column(
             modifier = Modifier
                 .fillMaxWidth()
-                .masonGlassShadow(cornerRadius = 30.dp)
                 .masonSheetSurface()
                 .padding(horizontal = 16.dp, vertical = 10.dp),
             verticalArrangement = Arrangement.spacedBy(10.dp),
@@ -1682,6 +2010,199 @@ private sealed interface RemoteThumbnailState {
     data class Failed(val message: String) : RemoteThumbnailState
 }
 
+private sealed interface RemoteFilePreviewState {
+    data object Loading : RemoteFilePreviewState
+    data object Unsupported : RemoteFilePreviewState
+    data class Code(val content: String) : RemoteFilePreviewState
+}
+
+@OptIn(ExperimentalMaterial3Api::class)
+@Composable
+private fun RemoteFileAttachmentSheet(
+    attachment: ConnectorConversationAttachmentPayload,
+    previewState: RemoteFilePreviewState,
+    downloadBusy: Boolean,
+    downloadError: String?,
+    onDismiss: () -> Unit,
+    onDownload: () -> Unit,
+) {
+    val sheetState = rememberModalBottomSheetState(skipPartiallyExpanded = true)
+    ModalBottomSheet(
+        onDismissRequest = onDismiss,
+        sheetState = sheetState,
+        containerColor = masonSheetContainerColor(),
+        shape = MasonSheetShape,
+        scrimColor = MaterialTheme.colorScheme.scrim.copy(alpha = MASON_SHEET_SCRIM_ALPHA),
+        tonalElevation = 0.dp,
+        contentWindowInsets = { masonOverlayWindowInsets() },
+        dragHandle = null,
+    ) {
+        Column(
+            modifier = Modifier
+                .fillMaxWidth()
+                .heightIn(min = 300.dp, max = 650.dp)
+                .masonSheetSurface()
+                .padding(horizontal = 16.dp, vertical = 10.dp),
+            verticalArrangement = Arrangement.spacedBy(10.dp),
+        ) {
+            Box(
+                modifier = Modifier
+                    .align(Alignment.CenterHorizontally)
+                    .width(38.dp)
+                    .height(4.dp)
+                    .clip(RoundedCornerShape(2.dp))
+                    .background(MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.55f)),
+            )
+            Row(
+                modifier = Modifier.fillMaxWidth(),
+                verticalAlignment = Alignment.CenterVertically,
+            ) {
+                Icon(
+                    imageVector = if (previewState is RemoteFilePreviewState.Code) {
+                        Icons.Outlined.Code
+                    } else {
+                        Icons.Outlined.Description
+                    },
+                    contentDescription = null,
+                    tint = MaterialTheme.colorScheme.onSurfaceVariant,
+                    modifier = Modifier.size(20.dp),
+                )
+                Spacer(Modifier.width(8.dp))
+                Text(
+                    text = "文件预览",
+                    color = MaterialTheme.colorScheme.onSurface,
+                    fontSize = 18.sp,
+                    fontWeight = FontWeight.SemiBold,
+                    modifier = Modifier.weight(1f),
+                )
+                ChatGlassControl(
+                    onClick = onDismiss,
+                    enabled = !downloadBusy,
+                    modifier = Modifier.size(34.dp),
+                    shape = CircleShape,
+                    cornerRadius = 17.dp,
+                    contentColor = MaterialTheme.colorScheme.onSurfaceVariant,
+                ) {
+                    Icon(
+                        imageVector = Icons.Outlined.Close,
+                        contentDescription = "关闭文件预览",
+                        modifier = Modifier.size(18.dp),
+                    )
+                }
+            }
+            Text(
+                text = attachment.name,
+                color = MaterialTheme.colorScheme.onSurface,
+                fontSize = 14.sp,
+                fontWeight = FontWeight.Medium,
+                maxLines = 1,
+                overflow = TextOverflow.Ellipsis,
+            )
+            Text(
+                text = "电脑文件 · ${formatRemoteAttachmentSize(attachment.sizeBytes)}",
+                color = MaterialTheme.colorScheme.onSurfaceVariant,
+                fontSize = 12.sp,
+                lineHeight = 16.sp,
+            )
+            Box(
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .weight(1f)
+                    .clip(RoundedCornerShape(10.dp))
+                    .background(MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.42f)),
+                contentAlignment = Alignment.Center,
+            ) {
+                when (previewState) {
+                    RemoteFilePreviewState.Loading -> Row(
+                        verticalAlignment = Alignment.CenterVertically,
+                        horizontalArrangement = Arrangement.spacedBy(8.dp),
+                    ) {
+                        CircularProgressIndicator(
+                            modifier = Modifier.size(17.dp),
+                            strokeWidth = 1.6.dp,
+                            color = MaterialTheme.colorScheme.onSurfaceVariant,
+                        )
+                        Text(
+                            text = "正在读取文件",
+                            color = MaterialTheme.colorScheme.onSurfaceVariant,
+                            fontSize = 13.sp,
+                        )
+                    }
+                    RemoteFilePreviewState.Unsupported -> Text(
+                        text = "无法预览",
+                        color = MaterialTheme.colorScheme.onSurfaceVariant,
+                        fontSize = 14.sp,
+                    )
+                    is RemoteFilePreviewState.Code -> {
+                        val verticalScrollState = rememberScrollState()
+                        val horizontalScrollState = rememberScrollState()
+                        Box(
+                            modifier = Modifier
+                                .fillMaxSize()
+                                .verticalScroll(verticalScrollState)
+                                .horizontalScroll(horizontalScrollState)
+                                .padding(12.dp),
+                        ) {
+                            Text(
+                                text = previewState.content.ifEmpty { "（空文件）" },
+                                color = MaterialTheme.colorScheme.onSurface,
+                                fontFamily = androidx.compose.ui.text.font.FontFamily.Monospace,
+                                fontSize = 12.sp,
+                                lineHeight = 18.sp,
+                                softWrap = false,
+                            )
+                        }
+                    }
+                }
+            }
+            downloadError?.takeIf(String::isNotBlank)?.let { error ->
+                Text(
+                    text = error,
+                    color = MaterialTheme.colorScheme.error,
+                    fontSize = 11.sp,
+                    maxLines = 2,
+                    overflow = TextOverflow.Ellipsis,
+                )
+            }
+            ChatGlassControl(
+                onClick = onDownload,
+                enabled = !downloadBusy,
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .height(48.dp),
+                shape = RoundedCornerShape(12.dp),
+                cornerRadius = 12.dp,
+                contentColor = MaterialTheme.colorScheme.onSurface,
+            ) {
+                Row(
+                    verticalAlignment = Alignment.CenterVertically,
+                    horizontalArrangement = Arrangement.Center,
+                ) {
+                    if (downloadBusy) {
+                        CircularProgressIndicator(
+                            modifier = Modifier.size(18.dp),
+                            strokeWidth = 1.7.dp,
+                            color = MaterialTheme.colorScheme.onSurface,
+                        )
+                    } else {
+                        Icon(
+                            imageVector = Icons.Outlined.FileDownload,
+                            contentDescription = null,
+                            modifier = Modifier.size(19.dp),
+                        )
+                    }
+                    Spacer(Modifier.width(7.dp))
+                    Text(
+                        text = if (downloadBusy) "下载中" else "下载",
+                        fontSize = 14.sp,
+                        fontWeight = FontWeight.Medium,
+                    )
+                }
+            }
+        }
+    }
+}
+
 @Composable
 private fun DetailComposer(
     draft: String,
@@ -1699,11 +2220,9 @@ private fun DetailComposer(
     approvalError: String?,
     onResolveApproval: (String) -> Unit,
     running: Boolean,
-    mobileSubmissionActive: Boolean,
     sending: Boolean,
     onDraftChange: (String) -> Unit,
     onSend: () -> Unit,
-    onSteer: () -> Unit,
     onInterrupt: () -> Unit,
     interrupting: Boolean,
     onAddImage: () -> Unit,
@@ -1719,7 +2238,6 @@ private fun DetailComposer(
     var addMenuExpanded by remember { mutableStateOf(false) }
     var skillMenuExpanded by remember { mutableStateOf(false) }
     val inputFocusRequester = remember { FocusRequester() }
-    val keyboardController = LocalSoftwareKeyboardController.current
     val canSend = !sending && (draft.isNotBlank() || attachments.isNotEmpty() || selectedSkill != null)
     val showStop = running && !canSend && !sending
     val composerActionBackground = if (canSend || showStop) Color.Black else MaterialTheme.colorScheme.surfaceVariant
@@ -1753,18 +2271,6 @@ private fun DetailComposer(
                 )
                 Spacer(Modifier.height(6.dp))
             }
-        }
-        if (mobileSubmissionActive) {
-            MessageSendFloatingBar(
-                editEnabled = !sending,
-                steerEnabled = canSend,
-                onEdit = {
-                    inputFocusRequester.requestFocus()
-                    keyboardController?.show()
-                },
-                onSteer = onSteer,
-            )
-            Spacer(Modifier.height(6.dp))
         }
         LazyRow(
             modifier = Modifier
@@ -2293,63 +2799,27 @@ private fun DetailScrollToBottomButton(
     }
 }
 
-@Composable
-private fun MessageSendFloatingBar(
-    editEnabled: Boolean,
-    steerEnabled: Boolean,
-    onEdit: () -> Unit,
-    onSteer: () -> Unit,
-) {
-    val barShape = RoundedCornerShape(18.dp)
-    RemoteFloatingSurface(
-        shape = barShape,
-        cornerRadius = 18.dp,
-        modifier = Modifier
-            .fillMaxWidth()
-            .widthIn(max = 760.dp)
-            .height(48.dp),
-        largeSurface = true,
-    ) {
-        Row(
-            modifier = Modifier
-                .fillMaxSize()
-                .padding(start = 14.dp, end = 6.dp),
-            verticalAlignment = Alignment.CenterVertically,
-        ) {
-            Text(
-                text = "输入",
-                color = MaterialTheme.colorScheme.onSurface,
-                fontSize = 13.sp,
-                fontWeight = FontWeight.Medium,
-                modifier = Modifier.weight(1f),
-            )
-            TextButton(
-                onClick = onEdit,
-                enabled = editEnabled,
-                modifier = Modifier.height(36.dp),
-            ) {
-                Text("编辑", fontSize = 13.sp)
-            }
-            MasonBlackConfirmButton(
-                label = "插队",
-                enabled = steerEnabled,
-                onClick = onSteer,
-                modifier = Modifier.height(36.dp),
-            )
-        }
-    }
-}
-
 private fun detailActivityStatusLabel(status: DetailActivityStatus): String = when (status) {
     DetailActivityStatus.IDLE -> "空闲"
     DetailActivityStatus.RUNNING -> "进行中"
-    DetailActivityStatus.COMPLETED -> ""
+    DetailActivityStatus.COMPLETED -> "已完成"
     DetailActivityStatus.INTERRUPTED -> "已停止"
     DetailActivityStatus.FAILED -> "失败"
 }
 
 private fun detailActivityDisplayTitle(activity: DetailActivity): String =
-    compactDetailActivityTitle(activity.title)
+    when (activity.kind) {
+        DetailActivityKind.THINKING -> "思考"
+        DetailActivityKind.COMMAND -> normalizeDetailActivityTitle(activity.title).ifBlank { "运行命令" }
+        DetailActivityKind.WEB_SEARCH -> "搜索网页"
+        DetailActivityKind.TOOL -> "调用工具"
+        DetailActivityKind.FILE_CHANGE -> "修改文件"
+        DetailActivityKind.COMMENTARY -> "执行说明"
+        DetailActivityKind.PLAN -> "更新计划"
+        DetailActivityKind.IMAGE -> normalizeDetailActivityTitle(activity.title).ifBlank { "图像" }
+        DetailActivityKind.OTHER -> normalizeDetailActivityTitle(activity.title)
+            .ifBlank { detailActivityKindLabel(activity.kind) }
+    }
 
 private fun detailActivityInlineText(activity: DetailActivity): String {
     val title = detailActivityDisplayTitle(activity)
@@ -2358,22 +2828,32 @@ private fun detailActivityInlineText(activity: DetailActivity): String {
 }
 
 private fun compactDetailActivityTitle(title: String): String {
-    val normalized = title.trim()
-    return when (normalized) {
-        "执行说明", "命令执行", "执行代码", "执行过程" -> "执行"
-        "终端 Web 搜索", "网络搜索", "网页搜索" -> "搜索"
-        "工具调用", "调用工具" -> "工具"
-        "修改文件" -> "修改"
-        "图片预览", "生成图片", "查看图片" -> "图片"
-        "其他操作", "正在处理" -> "其他"
-        "连接任务" -> "连接"
-        "恢复任务" -> "恢复"
-        else -> if (normalized.length == 4 && normalized.all { it in '\u4E00'..'\u9FFF' }) {
-            normalized.take(2)
-        } else {
-            normalized
-        }
-    }
+    return normalizeDetailActivityTitle(title)
+}
+
+private fun isRemoteCodePreviewable(attachment: ConnectorConversationAttachmentPayload): Boolean {
+    val mimeType = attachment.mimeType
+        ?.substringBefore(';')
+        ?.trim()
+        ?.lowercase(Locale.ROOT)
+    val fileName = attachment.name.substringAfterLast('/').lowercase(Locale.ROOT)
+    val extension = fileName.substringAfterLast('.', "")
+    return mimeType?.startsWith("text/") == true ||
+        mimeType in RemoteCodePreviewMimeTypes ||
+        extension in RemoteCodePreviewExtensions ||
+        fileName == "dockerfile"
+}
+
+private fun decodeRemoteText(bytes: ByteArray): String? {
+    if (bytes.any { it == 0.toByte() }) return null
+    return runCatching {
+        Charsets.UTF_8.newDecoder()
+            .onMalformedInput(CodingErrorAction.REPORT)
+            .onUnmappableCharacter(CodingErrorAction.REPORT)
+            .decode(ByteBuffer.wrap(bytes))
+            .toString()
+            .removePrefix("\uFEFF")
+    }.getOrNull()
 }
 
 private fun formatRemoteAttachmentSize(bytes: Long): String = when {
@@ -2384,12 +2864,13 @@ private fun formatRemoteAttachmentSize(bytes: Long): String = when {
 
 private fun formatRemoteDuration(durationMillis: Long): String {
     val totalSeconds = (durationMillis.coerceAtLeast(0L) / 1_000L)
+    val hours = totalSeconds / 3_600L
     val minutes = totalSeconds / 60L
     val seconds = totalSeconds % 60L
-    return if (minutes > 0) {
-        "%d分%02d秒".format(Locale.CHINA, minutes, seconds)
-    } else {
-        "%d秒".format(Locale.CHINA, seconds)
+    return when {
+        hours > 0 -> "%d时%02d分".format(Locale.CHINA, hours, minutes % 60L)
+        minutes > 0 -> "%d分%02d秒".format(Locale.CHINA, minutes, seconds)
+        else -> "%d秒".format(Locale.CHINA, seconds)
     }
 }
 
@@ -2531,38 +3012,47 @@ private suspend fun saveRemoteConversationFile(
     }
 }
 
-private fun ConnectorConversationDetailPayload.toDetailDemo(): DetailDemo = DetailDemo(
-    messages = messages
-        .takeLast(MaxVisibleDetailMessages)
-        .mapIndexed { index, message ->
-        DetailMessage(
-            id = "remote-message-$index",
-            isUser = message.role == ConnectorConversationRole.USER,
-            text = cleanRemoteMessageText(message.text).take(MaxDetailMessageCharacters).let { visible ->
-                if (message.text.length > MaxDetailMessageCharacters) {
-                    "$visible\n\n内容较长，已截取最近详情。"
-                } else {
-                    visible
-                }
-            },
-            attachments = message.attachments,
-        )
-    }.ifEmpty {
-        listOf(DetailMessage("remote-empty", false, "电脑端暂时没有可显示的消息。"))
-    },
-    // Keep the server event order. The detail page renders these beside messages
-    // as one transcript instead of collapsing them into a process summary.
-    activities = activities
+private fun ConnectorConversationDetailPayload.toDetailDemo(): DetailDemo {
+    val detailActivities = activities
         .map(ConnectorConversationActivityPayload::toDetailActivity)
-        .takeLast(MaxVisibleDetailActivities),
-    running = executionStatus == ConnectorExecutionStatus.RUNNING ||
-        executionStatus == ConnectorExecutionStatus.WAITING_FOR_APPROVAL,
-    activeActivityTitle = activeActivityTitle,
-    activeActivityText = activeActivityText,
-    startedAt = startedAt,
-    completedAt = completedAt,
-    durationMillis = durationMillis,
-)
+        .filterNot { it.kind == DetailActivityKind.COMMENTARY }
+    val currentDetailActivity = detailActivities.lastOrNull {
+        it.status == DetailActivityStatus.RUNNING
+    }
+    val safeActiveTitle = currentDetailActivity?.title ?: activeActivityTitle
+    val safeActiveText = activeActivityText
+    return DetailDemo(
+        messages = messages
+            .takeLast(MaxVisibleDetailMessages)
+            .mapIndexed { index, message ->
+            DetailMessage(
+                id = "remote-message-$index",
+                isUser = message.role == ConnectorConversationRole.USER,
+                text = cleanRemoteMessageText(message.text).take(MaxDetailMessageCharacters).let { visible ->
+                    if (message.text.length > MaxDetailMessageCharacters) {
+                        "$visible\n\n内容较长，已截取最近详情。"
+                    } else {
+                        visible
+                    }
+                },
+                attachments = message.attachments,
+            )
+        }.ifEmpty {
+            listOf(DetailMessage("remote-empty", false, "电脑端暂时没有可显示的消息。"))
+        },
+        // Keep the server event order. The detail page renders these beside messages
+        // as one transcript instead of collapsing them into a process summary.
+        activities = detailActivities.takeLast(MaxVisibleDetailActivities),
+        executionStatus = executionStatus,
+        running = executionStatus == ConnectorExecutionStatus.RUNNING ||
+            executionStatus == ConnectorExecutionStatus.WAITING_FOR_APPROVAL,
+        activeActivityTitle = safeActiveTitle,
+        activeActivityText = safeActiveText,
+        startedAt = startedAt,
+        completedAt = completedAt,
+        durationMillis = durationMillis,
+    )
+}
 
 private fun cleanRemoteMessageText(text: String): String = text
     .replace(
@@ -2656,6 +3146,8 @@ private fun demoRemoteDetail(threadId: String): DetailDemo = when (threadId) {
             ),
         ),
         running = true,
+        executionStatus = ConnectorExecutionStatus.WAITING_FOR_APPROVAL,
+        startedAt = System.currentTimeMillis(),
     )
     "demo-statuses" -> DetailDemo(
         messages = listOf(
@@ -2744,6 +3236,7 @@ private fun demoRemoteDetail(threadId: String): DetailDemo = when (threadId) {
             ),
         ),
         running = true,
+        startedAt = System.currentTimeMillis(),
     )
     "demo-richtext" -> DetailDemo(
         messages = listOf(
@@ -2799,6 +3292,7 @@ Get-ChildItem -Force
             ),
         ),
         running = true,
+        startedAt = System.currentTimeMillis(),
     )
     "demo-completed" -> run {
         val completedAt = System.currentTimeMillis()
@@ -2812,7 +3306,7 @@ Get-ChildItem -Force
                     id = "completed-command",
                     kind = DetailActivityKind.COMMAND,
                     title = "执行",
-                    text = "命令已完成，点击可查看命令和输出。",
+                text = "命令已完成。",
                     status = DetailActivityStatus.COMPLETED,
                     command = "Get-ChildItem -Force",
                     output = "README.md\napp\ndesktop-connector",

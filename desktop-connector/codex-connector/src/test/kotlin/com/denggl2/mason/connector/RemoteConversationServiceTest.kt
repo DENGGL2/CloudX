@@ -133,6 +133,33 @@ class RemoteConversationServiceTest {
     }
 
     @Test
+    fun unsubscribesCompletedThreadSoItsWriterIsReleased() = withStore { store ->
+        val api = FakeRemoteControlApi(readResponse = json("{}"))
+        api.supportsThreadUnsubscribe = true
+        val service = RemoteConversationService(api, store)
+        try {
+            service.record(notification("turn/started", "thread-1", "turn-1", ""))
+            service.record(
+                CodexNotification(
+                    method = "turn/completed",
+                    params = jsonObject(
+                        """{"threadId":"thread-1","turn":{"id":"turn-1","status":"completed"}}""",
+                    ),
+                ),
+            )
+
+            runBlocking {
+                withTimeout(2_000) {
+                    while (api.unsubscribedThreadId == null) delay(10)
+                }
+            }
+            assertEquals("thread-1", api.unsubscribedThreadId)
+        } finally {
+            service.close()
+        }
+    }
+
+    @Test
     fun listHydratesIdleSummaryFromLatestTurn() = withStore { store ->
         val api = FakeThreadHistoryApi(
             listResponse = json(
@@ -768,8 +795,141 @@ class RemoteConversationServiceTest {
         val detail = runBlocking { service.readConversation("thread-1") }
 
         assertEquals(RemoteExecutionStatus.RUNNING, detail.executionStatus)
-        assertEquals("执行代码", detail.activeActivityTitle)
+        assertEquals("运行命令", detail.activeActivityTitle)
         assertEquals("npm test", detail.activeActivityText)
+    }
+
+    @Test
+    fun newTurnDropsPreviousTurnActivitiesAndPartialReply() = withStore { store ->
+        val service = RemoteConversationService(
+            api = FakeThreadHistoryApi(
+                listResponse = json("{}"),
+                readResponse = activeThreadResponse(),
+            ),
+            store = store,
+        )
+
+        service.record(notification("turn/started", "thread-1", "turn-old", ""))
+        service.record(
+            CodexNotification(
+                method = "item/started",
+                params = jsonObject(
+                    """{"threadId":"thread-1","turnId":"turn-old","item":{"id":"old-command","type":"commandExecution","command":"old command"}}""",
+                ),
+            ),
+        )
+        service.record(notification("item/agentMessage/delta", "thread-1", "turn-old", "旧回复"))
+
+        service.record(notification("turn/started", "thread-1", "turn-new", ""))
+        service.record(
+            CodexNotification(
+                method = "item/started",
+                params = jsonObject(
+                    """{"threadId":"thread-1","turnId":"turn-new","item":{"id":"new-command","type":"commandExecution","command":"new command"}}""",
+                ),
+            ),
+        )
+        service.record(notification("item/agentMessage/delta", "thread-1", "turn-old", "迟到的旧回复"))
+
+        val detail = runBlocking { service.readConversation("thread-1") }
+
+        assertEquals("turn-new", detail.activeTurnId)
+        assertEquals(listOf("new-command"), detail.activities.map { it.id })
+        assertFalse(detail.messages.any { it.text.contains("旧回复") })
+    }
+
+    @Test
+    fun completedActivityDoesNotReplaceCurrentTurnWithGenericProcessingText() = withStore { store ->
+        val service = RemoteConversationService(
+            api = FakeThreadHistoryApi(
+                listResponse = json("{}"),
+                readResponse = activeThreadResponse(),
+            ),
+            store = store,
+        )
+
+        service.record(notification("turn/started", "thread-1", "turn-1", ""))
+        service.record(
+            CodexNotification(
+                method = "item/started",
+                params = jsonObject(
+                    """{"threadId":"thread-1","turnId":"turn-1","item":{"id":"command-1","type":"commandExecution","command":"npm test"}}""",
+                ),
+            ),
+        )
+        service.record(
+            CodexNotification(
+                method = "item/completed",
+                params = jsonObject(
+                    """{"threadId":"thread-1","turnId":"turn-1","item":{"id":"command-1","type":"commandExecution","command":"npm test","status":"completed"}}""",
+                ),
+            ),
+        )
+
+        val detail = runBlocking { service.readConversation("thread-1") }
+
+        assertEquals(RemoteExecutionStatus.RUNNING, detail.executionStatus)
+        assertEquals(null, detail.activeActivityTitle)
+        assertEquals(null, detail.activeActivityText)
+        assertEquals(RemoteConversationActivityStatus.COMPLETED, detail.activities.single().status)
+    }
+
+    @Test
+    fun exposesContextCompactionAsCurrentActivity() = withStore { store ->
+        val service = RemoteConversationService(
+            api = FakeThreadHistoryApi(
+                listResponse = json("{}"),
+                readResponse = activeThreadResponse(),
+            ),
+            store = store,
+        )
+
+        service.record(notification("turn/started", "thread-1", "turn-1", ""))
+        service.record(itemNotification(
+            method = "item/started",
+            item = """{"id":"compact-1","type":"contextCompaction"}""",
+        ))
+
+        val running = runBlocking { service.readConversation("thread-1") }
+        assertEquals("上下文压缩", running.activeActivityTitle)
+        assertEquals(RemoteConversationActivityStatus.RUNNING, running.activities.single().status)
+
+        service.record(itemNotification(
+            method = "item/completed",
+            item = """{"id":"compact-1","type":"contextCompaction","status":"completed"}""",
+        ))
+
+        val completed = runBlocking { service.readConversation("thread-1") }
+        assertEquals(RemoteConversationActivityStatus.COMPLETED, completed.activities.single().status)
+    }
+
+    @Test
+    fun readsTurnTimestampsForCompletedDuration() = withStore { store ->
+        val service = RemoteConversationService(
+            api = FakeThreadHistoryApi(
+                listResponse = json("{}"),
+                readResponse = json(
+                    """{
+                        "thread": {
+                            "id":"thread-1",
+                            "preview":"测试会话",
+                            "turns":[{
+                                "id":"turn-1",
+                                "status":"completed",
+                                "startedAt":1700000000000,
+                                "completedAt":1700000003000,
+                                "items":[]
+                            }]
+                        }
+                    }""",
+                ),
+            ),
+            store = store,
+        )
+
+        val detail = runBlocking { service.readConversation("thread-1") }
+
+        assertEquals(3_000L, detail.durationMillis)
     }
 
     @Test
@@ -821,6 +981,12 @@ class RemoteConversationServiceTest {
             key = "delta",
             value = "1 test passed",
         ))
+        service.record(itemProgressNotification(
+            method = "item/commandExecution/outputDelta",
+            itemId = "command-1",
+            key = "delta",
+            value = "2 test passed",
+        ))
 
         val running = runBlocking { service.readConversation("thread-1") }
         assertEquals(2, running.activities.size)
@@ -830,6 +996,11 @@ class RemoteConversationServiceTest {
         assertEquals(RemoteConversationActivityStatus.RUNNING, running.activities[1].status)
         assertTrue(running.activities[1].text.contains("npm test"))
         assertTrue(running.activities[1].text.contains("1 test passed"))
+        assertTrue(running.activities[1].text.contains("2 test passed"))
+        assertEquals(
+            running.activities[1].text.replace(Regex("\\s+"), " ").trim(),
+            running.activeActivityText,
+        )
 
         service.record(itemNotification(
             method = "item/completed",
@@ -854,6 +1025,49 @@ class RemoteConversationServiceTest {
         assertTrue(completed.activities.all {
             it.status == RemoteConversationActivityStatus.COMPLETED
         })
+    }
+
+    @Test
+    fun completedTurnStatusWinsOverFailedActivityStatus() = withStore { store ->
+        val service = RemoteConversationService(
+            api = FakeThreadHistoryApi(
+                listResponse = json("{}"),
+                readResponse = json(
+                    """{
+                        "thread": {
+                            "id":"thread-1",
+                            "preview":"测试会话",
+                            "turns":[{
+                                "id":"turn-1",
+                                "status":"completed",
+                                "items":[
+                                    {
+                                        "id":"command-1",
+                                        "type":"commandExecution",
+                                        "status":"failed",
+                                        "command":"npm test",
+                                        "aggregatedOutput":"命令失败，但任务随后完成"
+                                    },
+                                    {
+                                        "id":"answer-1",
+                                        "type":"agentMessage",
+                                        "phase":"final_answer",
+                                        "text":"最终已完成"
+                                    }
+                                ]
+                            }]
+                        }
+                    }""",
+                ),
+            ),
+            store = store,
+        )
+
+        val detail = runBlocking { service.readConversation("thread-1") }
+
+        assertEquals(RemoteExecutionStatus.COMPLETED, detail.executionStatus)
+        assertEquals(RemoteConversationActivityStatus.FAILED, detail.activities.single().status)
+        assertEquals(listOf("最终已完成"), detail.messages.map { it.text })
     }
 
     @Test
@@ -1883,6 +2097,8 @@ private class FakeRemoteControlApi(
     var resumeErrorOverride: Throwable? = null
     var startTurnErrorOverride: Throwable? = null
     var clearStartTurnErrorAfterThrow: Boolean = false
+    var supportsThreadUnsubscribe: Boolean = false
+    @Volatile var unsubscribedThreadId: String? = null
     val startedInputs = java.util.concurrent.CopyOnWriteArrayList<JsonArray>()
 
     override suspend fun listThreads(limit: Int, cursor: String?): JsonElement = listResponse
@@ -1898,6 +2114,14 @@ private class FakeRemoteControlApi(
         resumedThreadId = threadId
         (resumeErrorOverride ?: resumeError)?.let { throw it }
         return resumeResponse ?: json("""{"thread":{"id":"$threadId"}}""")
+    }
+
+    override suspend fun unsubscribeThread(threadId: String): JsonElement {
+        if (!supportsThreadUnsubscribe) {
+            throw UnsupportedOperationException("Codex thread unsubscribe is unavailable")
+        }
+        unsubscribedThreadId = threadId
+        return json("{}")
     }
 
     override suspend fun startThread(

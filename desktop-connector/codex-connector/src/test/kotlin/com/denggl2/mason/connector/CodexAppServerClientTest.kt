@@ -52,6 +52,19 @@ class CodexAppServerClientTest {
                 )
                 transport.reply(archiveRequest)
                 archive.await()
+
+                val unsubscribe = async { api.unsubscribeThread("thread-1") }
+                val unsubscribeRequest = transport.sent.receive()
+                assertEquals(
+                    "thread/unsubscribe",
+                    unsubscribeRequest["method"]?.jsonPrimitive?.content,
+                )
+                assertEquals(
+                    "thread-1",
+                    unsubscribeRequest["params"]?.jsonObject?.get("threadId")?.jsonPrimitive?.content,
+                )
+                transport.reply(unsubscribeRequest)
+                unsubscribe.await()
             } finally {
                 client.close()
             }

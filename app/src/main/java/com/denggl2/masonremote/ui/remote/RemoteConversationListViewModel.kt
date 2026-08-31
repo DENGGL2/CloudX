@@ -3,6 +3,7 @@ package com.denggl2.masonremote.ui.remote
 import android.content.Context
 import androidx.lifecycle.ViewModel
 import com.denggl2.masonremote.data.AndroidDeviceIdentityStore
+import com.denggl2.masonremote.data.RemotePreferences
 import com.denggl2.masonremote.diagnostics.DiagnosticLog
 import com.denggl2.masonremote.transport.ConnectorConversationChangePayload
 import com.denggl2.masonremote.transport.ConnectorConversationCreateRequest
@@ -38,6 +39,7 @@ data class RemoteConversationSummary(
     val updatedAt: Long = 0,
     val projectPath: String? = null,
     val executionStatus: RemoteExecutionStatus = RemoteExecutionStatus.IDLE,
+    val latestCompletionId: String? = null,
     val isPinned: Boolean = false,
 )
 
@@ -131,13 +133,22 @@ internal class RemoteConversationListViewModel(
 ) : ViewModel() {
     private val isPaired = pairedConnector != null
     private val remoteScope = CoroutineScope(SupervisorJob() + Dispatchers.Main.immediate)
+    private val remotePreferences = RemotePreferences(appContext)
     private val connectorClient = pairedConnector?.let {
         RemoteConnectorClient(it, AndroidDeviceIdentityStore(), appContext)
     }
+    private val completionNotificationScopeId = pairedConnector?.connectorDeviceId
+    private val completionNotificationBaselineAt = completionNotificationScopeId?.let { scopeId ->
+        remotePreferences.completionNotificationBaselineAt(scopeId, appInstallOrUpdateTime())
+    }
     private var eventJob: Job? = null
     private var eventRevision = 0L
+    private var completionNotificationSessionBaselineRevision: Long? = null
+    private var hasLoadedConversationPage = debugDemoMode
     private val archivedThreadIds = mutableSetOf<String>()
     private val pendingExecutionStatuses = mutableMapOf<String, RemoteExecutionStatus>()
+    private val pendingExecutionCompletionIds = mutableMapOf<String, String>()
+    private val pendingExecutionCompletionRevisions = mutableMapOf<String, Long>()
     private val project = RemoteProjectOption("C:/CodexWork/CloudX", "CloudX")
     private val _uiState = MutableStateFlow(
         RemoteConversationListUiState(
@@ -199,17 +210,38 @@ internal class RemoteConversationListViewModel(
         status: RemoteExecutionStatus,
         preview: String? = null,
         detail: String? = null,
+        completionId: String? = null,
+        completionRevision: Long? = null,
     ) {
         pendingExecutionStatuses[threadId] = status
+        if (status == RemoteExecutionStatus.COMPLETED) {
+            if (!completionId.isNullOrBlank()) {
+                pendingExecutionCompletionIds[threadId] = completionId
+            }
+            if (completionRevision != null) {
+                pendingExecutionCompletionRevisions[threadId] = completionRevision
+            }
+        } else {
+            pendingExecutionCompletionIds.remove(threadId)
+            pendingExecutionCompletionRevisions.remove(threadId)
+        }
         val conversation = _uiState.value.conversations.firstOrNull { it.threadId == threadId } ?: return
-        val wasCompleted = conversation.executionStatus == RemoteExecutionStatus.COMPLETED
         val next = conversation.copy(
             executionStatus = status,
             preview = preview ?: conversation.preview,
             updatedAt = System.currentTimeMillis(),
+            latestCompletionId = if (status == RemoteExecutionStatus.COMPLETED) {
+                completionId ?: conversation.latestCompletionId
+            } else {
+                conversation.latestCompletionId
+            },
         )
         updateConversation(threadId) { next }
-        if (status == RemoteExecutionStatus.COMPLETED && !wasCompleted) {
+        if (
+            status == RemoteExecutionStatus.COMPLETED &&
+            hasLoadedConversationPage &&
+            shouldShowCompletionUnread(next)
+        ) {
             _uiState.value = _uiState.value.copy(
                 unreadCompletionThreadIds = _uiState.value.unreadCompletionThreadIds + threadId,
             )
@@ -268,6 +300,19 @@ internal class RemoteConversationListViewModel(
     fun loadMore() = Unit
     fun retry() = refresh()
     fun markConversationSeen(threadId: String) {
+        val conversation = _uiState.value.conversations.firstOrNull { it.threadId == threadId }
+        val completionMarker = conversation?.completionMarker()
+        if (
+            completionNotificationScopeId != null &&
+            conversation?.executionStatus == RemoteExecutionStatus.COMPLETED &&
+            completionMarker != null
+        ) {
+            remotePreferences.markCompletionSeen(
+                scopeId = completionNotificationScopeId,
+                threadId = threadId,
+                completionId = completionMarker,
+            )
+        }
         _uiState.value = _uiState.value.copy(
             unreadCompletionThreadIds = _uiState.value.unreadCompletionThreadIds - threadId,
         )
@@ -509,13 +554,18 @@ internal class RemoteConversationListViewModel(
         revision: Long,
     ) {
         val previous = _uiState.value.conversations.associateBy(RemoteConversationSummary::threadId)
+        val pendingCompletionRevisions = pendingExecutionCompletionRevisions.toMap()
+        val sessionBaselineRevision = completionNotificationSessionBaselineRevision ?: revision
         val next = sortConversations(conversations.map { payload ->
             val incoming = payload.toUiSummary()
             val eventStatus = pendingExecutionStatuses[incoming.threadId]
+            val pendingCompletionId = pendingExecutionCompletionIds[incoming.threadId]
             val previousStatus = previous[incoming.threadId]?.executionStatus
             val resolvedStatus = when {
                 incoming.executionStatus != RemoteExecutionStatus.IDLE -> {
                     pendingExecutionStatuses.remove(incoming.threadId)
+                    pendingExecutionCompletionIds.remove(incoming.threadId)
+                    pendingExecutionCompletionRevisions.remove(incoming.threadId)
                     incoming.executionStatus
                 }
                 eventStatus != null -> eventStatus
@@ -523,31 +573,44 @@ internal class RemoteConversationListViewModel(
                     previousStatus == RemoteExecutionStatus.WAITING_FOR_PERMISSION -> previousStatus
                 else -> incoming.executionStatus
             }
-            incoming.copy(executionStatus = resolvedStatus)
+            incoming.copy(
+                executionStatus = resolvedStatus,
+                latestCompletionId = pendingCompletionId ?: incoming.latestCompletionId,
+            )
         })
             .filterNot { it.threadId in archivedThreadIds }
-        val newlyCompleted = next.asSequence()
-            .filter { it.executionStatus == RemoteExecutionStatus.COMPLETED }
-            .filter { previous[it.threadId]?.executionStatus != RemoteExecutionStatus.COMPLETED }
-            .map(RemoteConversationSummary::threadId)
-            .toSet()
+        val newlyCompleted = completionUnreadThreads(
+            next = next,
+            previous = previous,
+            baselineRevision = sessionBaselineRevision,
+            pendingCompletionRevisions = pendingCompletionRevisions,
+        )
         eventRevision = maxOf(eventRevision, revision)
         _uiState.value = _uiState.value.copy(
             conversations = next,
             nextCursor = null,
             unreadCompletionThreadIds = _uiState.value.unreadCompletionThreadIds + newlyCompleted,
         )
+        completionNotificationSessionBaselineRevision = sessionBaselineRevision
+        hasLoadedConversationPage = true
     }
 
     private fun applyEventPage(
         revision: Long,
         changes: List<ConnectorConversationChangePayload>,
     ) {
+        val sessionBaselineRevision = completionNotificationSessionBaselineRevision
+        val newChanges = changes.filter { change ->
+            change.revision > eventRevision &&
+                (sessionBaselineRevision == null || change.revision > sessionBaselineRevision)
+        }
         eventRevision = maxOf(eventRevision, revision)
-        changes.forEach { change ->
+        newChanges.forEach { change ->
             updateRemoteExecutionStatus(
                 threadId = change.threadId,
                 status = change.status.toUiStatus(),
+                completionId = change.turnId,
+                completionRevision = change.revision,
             )
         }
     }
@@ -560,8 +623,93 @@ internal class RemoteConversationListViewModel(
         updatedAt = updatedAt,
         projectPath = projectPath,
         executionStatus = executionStatus.toUiStatus(),
+        latestCompletionId = latestCompletionId,
         isPinned = isPinned,
     )
+
+    private fun completionUnreadThreads(
+        next: List<RemoteConversationSummary>,
+        previous: Map<String, RemoteConversationSummary>,
+        baselineRevision: Long,
+        pendingCompletionRevisions: Map<String, Long>,
+    ): Set<String> {
+        val scopeId = completionNotificationScopeId
+        if (scopeId == null) {
+            return next.asSequence()
+                .filter { it.executionStatus == RemoteExecutionStatus.COMPLETED }
+                .filter { previous[it.threadId]?.executionStatus != RemoteExecutionStatus.COMPLETED }
+                .map(RemoteConversationSummary::threadId)
+                .toSet()
+        }
+
+        // Seed existing completed threads once; only completions after the app
+        // was installed or updated can enter the unread set on that first sync.
+        val baselineSeeded = remotePreferences.isCompletionNotificationBaselineSeeded(scopeId)
+        val baselineAt = completionNotificationBaselineAt ?: System.currentTimeMillis()
+        val unread = mutableSetOf<String>()
+        next.asSequence()
+            .filter { it.executionStatus == RemoteExecutionStatus.COMPLETED }
+            .forEach { conversation ->
+                val marker = conversation.completionMarker()
+                if (marker == null) {
+                    if (
+                        baselineSeeded &&
+                        previous[conversation.threadId]?.let {
+                            it.executionStatus != RemoteExecutionStatus.COMPLETED
+                        } == true
+                    ) {
+                        unread += conversation.threadId
+                    }
+                    return@forEach
+                }
+                val seenMarker = remotePreferences.lastSeenCompletionId(scopeId, conversation.threadId)
+                if (!baselineSeeded) {
+                    if (
+                        conversation.isCompletedAfter(baselineAt)
+                    ) {
+                        unread += conversation.threadId
+                    } else {
+                        remotePreferences.markCompletionSeen(scopeId, conversation.threadId, marker)
+                    }
+                } else if (marker != seenMarker) {
+                    val completionArrivedAfterSessionStarted =
+                        pendingCompletionRevisions[conversation.threadId]?.let { it > baselineRevision } == true
+                    if (
+                        seenMarker == null &&
+                        !completionArrivedAfterSessionStarted &&
+                        !conversation.isCompletedAfter(baselineAt)
+                    ) {
+                        remotePreferences.markCompletionSeen(scopeId, conversation.threadId, marker)
+                    } else {
+                        unread += conversation.threadId
+                    }
+                }
+            }
+        if (!baselineSeeded) {
+            remotePreferences.markCompletionNotificationBaselineSeeded(scopeId)
+        }
+        return unread
+    }
+
+    private fun shouldShowCompletionUnread(conversation: RemoteConversationSummary): Boolean {
+        if (conversation.executionStatus != RemoteExecutionStatus.COMPLETED) return false
+        val scopeId = completionNotificationScopeId ?: return true
+        val marker = conversation.completionMarker() ?: return true
+        return remotePreferences.lastSeenCompletionId(scopeId, conversation.threadId) != marker
+    }
+
+    private fun RemoteConversationSummary.completionMarker(): String? =
+        latestCompletionId?.takeIf(String::isNotBlank)
+            ?: updatedAt.takeIf { it > 0 }?.let { "updatedAt:$it" }
+
+    private fun RemoteConversationSummary.isCompletedAfter(baselineAt: Long): Boolean =
+        updatedAt > 0 && updatedAt > baselineAt
+
+    private fun appInstallOrUpdateTime(): Long = runCatching {
+        appContext.packageManager
+            .getPackageInfo(appContext.packageName, 0)
+            .lastUpdateTime
+    }.getOrDefault(System.currentTimeMillis())
 
     private fun ConnectorComposerOptions.toUiOptions() = RemoteComposerOptions(
         projects = projects.map { RemoteProjectOption(it.path, it.displayName) },

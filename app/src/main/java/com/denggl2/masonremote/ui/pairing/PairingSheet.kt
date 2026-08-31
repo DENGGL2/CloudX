@@ -55,8 +55,7 @@ import com.denggl2.masonremote.transport.displayName
 import com.denggl2.masonremote.transport.parsePairingOffer
 import com.denggl2.masonremote.ui.FigmaSvgAsset
 import com.denggl2.masonremote.ui.chat.ChatGlassControl
-import com.denggl2.masonremote.ui.chat.masonGlassShadow
-import com.denggl2.masonremote.ui.theme.MASON_OVERLAY_SCRIM_ALPHA
+import com.denggl2.masonremote.ui.theme.MASON_SHEET_SCRIM_ALPHA
 import com.denggl2.masonremote.ui.theme.MasonSheetShape
 import com.denggl2.masonremote.ui.theme.masonOverlayWindowInsets
 import com.denggl2.masonremote.ui.theme.masonSheetContainerColor
@@ -140,7 +139,7 @@ internal fun PairingSheet(
         onDismissRequest = { dismissSheet() },
         sheetState = sheetState,
         containerColor = masonSheetContainerColor(),
-        scrimColor = MaterialTheme.colorScheme.scrim.copy(alpha = MASON_OVERLAY_SCRIM_ALPHA),
+        scrimColor = MaterialTheme.colorScheme.scrim.copy(alpha = MASON_SHEET_SCRIM_ALPHA),
         tonalElevation = 0.dp,
         shape = MasonSheetShape,
         dragHandle = null,
@@ -224,7 +223,6 @@ private fun PairingSheetContent(
         modifier = Modifier
             .fillMaxWidth()
             .height(sheetHeight)
-            .masonGlassShadow(cornerRadius = 30.dp)
             .masonSheetSurface(
                 RoundedCornerShape(topStart = 30.dp, topEnd = 30.dp),
                 includeNavigationBarPadding = false,

@@ -18,6 +18,9 @@ interface CodexRemoteControlApi : CodexThreadHistoryApi {
     suspend fun resumeThread(threadId: String): JsonElement =
         throw UnsupportedOperationException("Codex thread resume is unavailable")
 
+    suspend fun unsubscribeThread(threadId: String): JsonElement =
+        throw UnsupportedOperationException("Codex thread unsubscribe is unavailable")
+
     suspend fun startThread(
         cwd: String? = null,
         model: String? = null,
@@ -112,6 +115,13 @@ class CodexAppServerApi(
 
     override suspend fun resumeThread(threadId: String): JsonElement = client.request(
         "thread/resume",
+        buildJsonObject {
+            put("threadId", threadId)
+        },
+    )
+
+    override suspend fun unsubscribeThread(threadId: String): JsonElement = client.request(
+        "thread/unsubscribe",
         buildJsonObject {
             put("threadId", threadId)
         },

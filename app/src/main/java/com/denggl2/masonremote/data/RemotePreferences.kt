@@ -16,6 +16,9 @@ private const val KEY_FONT_SIZE = "font_size"
 private const val KEY_GLASS_REFRACTION = "glass_refraction"
 private const val KEY_GLASS_TRANSPARENCY = "glass_transparency"
 private const val KEY_GLASS_FROST = "glass_frost"
+private const val KEY_COMPLETION_NOTIFICATION_BASELINE_PREFIX = "completion_notification_baseline_"
+private const val KEY_COMPLETION_NOTIFICATION_BASELINE_SEEDED_PREFIX = "completion_notification_baseline_seeded_"
+private const val KEY_COMPLETION_NOTIFICATION_SEEN_PREFIX = "completion_notification_seen_"
 
 class RemotePreferences(private val context: Context) {
     private val preferences
@@ -68,4 +71,33 @@ class RemotePreferences(private val context: Context) {
     var glassFrost: Float
         get() = preferences.getFloat(KEY_GLASS_FROST, 0.10f)
         set(value) { preferences.edit().putFloat(KEY_GLASS_FROST, value).apply() }
+
+    fun completionNotificationBaselineAt(scopeId: String, now: Long = System.currentTimeMillis()): Long {
+        val key = KEY_COMPLETION_NOTIFICATION_BASELINE_PREFIX + scopeId
+        if (!preferences.contains(key)) {
+            preferences.edit().putLong(key, now).apply()
+        }
+        return preferences.getLong(key, now)
+    }
+
+    fun isCompletionNotificationBaselineSeeded(scopeId: String): Boolean =
+        preferences.getBoolean(KEY_COMPLETION_NOTIFICATION_BASELINE_SEEDED_PREFIX + scopeId, false)
+
+    fun markCompletionNotificationBaselineSeeded(scopeId: String) {
+        preferences.edit()
+            .putBoolean(KEY_COMPLETION_NOTIFICATION_BASELINE_SEEDED_PREFIX + scopeId, true)
+            .apply()
+    }
+
+    fun lastSeenCompletionId(scopeId: String, threadId: String): String? =
+        preferences.getString(completionNotificationSeenKey(scopeId, threadId), null)
+
+    fun markCompletionSeen(scopeId: String, threadId: String, completionId: String) {
+        preferences.edit()
+            .putString(completionNotificationSeenKey(scopeId, threadId), completionId)
+            .apply()
+    }
+
+    private fun completionNotificationSeenKey(scopeId: String, threadId: String): String =
+        KEY_COMPLETION_NOTIFICATION_SEEN_PREFIX + scopeId + "_" + threadId
 }

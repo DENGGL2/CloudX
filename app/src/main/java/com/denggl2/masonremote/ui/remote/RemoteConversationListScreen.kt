@@ -116,7 +116,7 @@ import com.denggl2.masonremote.ui.chat.glassClickable
 import com.denggl2.masonremote.ui.chat.masonGlassShadow
 import com.denggl2.masonremote.ui.chat.rememberChatBackdropState
 import com.denggl2.masonremote.ui.theme.LocalInterfaceEffects
-import com.denggl2.masonremote.ui.theme.MASON_OVERLAY_SCRIM_ALPHA
+import com.denggl2.masonremote.ui.theme.MASON_SHEET_SCRIM_ALPHA
 import com.denggl2.masonremote.ui.theme.MasonSheetShape
 import com.denggl2.masonremote.ui.theme.ProgressiveBlurEdge
 import com.denggl2.masonremote.ui.theme.captureProgressiveEdgeBlur
@@ -646,7 +646,7 @@ private fun RemoteNewConversationSheet(
         },
         shape = MasonSheetShape,
         containerColor = masonSheetContainerColor(),
-        scrimColor = MaterialTheme.colorScheme.scrim.copy(alpha = MASON_OVERLAY_SCRIM_ALPHA),
+        scrimColor = MaterialTheme.colorScheme.scrim.copy(alpha = MASON_SHEET_SCRIM_ALPHA),
         tonalElevation = 0.dp,
         contentWindowInsets = { masonOverlayWindowInsets() },
         dragHandle = null,
@@ -654,7 +654,6 @@ private fun RemoteNewConversationSheet(
         Column(
             modifier = Modifier
                 .fillMaxWidth()
-                .masonGlassShadow(cornerRadius = 30.dp)
                 .masonSheetSurface()
                 .imePadding()
                 .padding(horizontal = 16.dp, vertical = 8.dp),

@@ -219,25 +219,23 @@ class RemoteConversationService(
             ?: throw RemoteConversationNotFoundException(threadId)
         val liveExecution = runtime.snapshot(threadId)
         val execution = selectExecution(liveExecution, persistedExecution) ?: RemoteExecutionSnapshot()
-        val persistedActivities = persistedExecution?.activities.orEmpty()
-        val activities = when {
-            liveExecution == null -> persistedActivities
-            liveExecution.turnId == persistedExecution?.turnId -> mergeActivities(
-                persistedActivities,
-                liveExecution.activities,
-            )
-            else -> liveExecution.activities
+        val activities = execution.activities
+        val visibleActivity = if (execution.status in ACTIVE_EXECUTION_STATUSES) {
+            activities.lastOrNull { it.status == RemoteConversationActivityStatus.RUNNING }
+        } else {
+            activities.lastOrNull()
         }
-        val visibleActivity = activities.lastOrNull {
-            it.status == RemoteConversationActivityStatus.RUNNING
-        } ?: activities.lastOrNull()
         val projectRoot = thread.string("cwd")
             ?.let(::normalizeExistingDirectory)
         val projectedAttachments = linkedMapOf<String, Path>()
         val allMessages = turns
             .flatMap { turn -> projectTurnMessages(turn, projectedAttachments, projectRoot) }
             .let { messages ->
-                val partialText = liveExecution?.partialAssistantText.orEmpty().trim()
+                val partialText = liveExecution
+                    ?.takeIf { it.turnId == execution.turnId }
+                    ?.partialAssistantText
+                    .orEmpty()
+                    .trim()
                 if (
                     execution.status == RemoteExecutionStatus.RUNNING &&
                     partialText.isNotBlank() &&
@@ -295,9 +293,11 @@ class RemoteConversationService(
         val snapshot = runtime.snapshot(threadId) ?: return null
         val conversation = snapshot.conversation ?: return null
         val activities = snapshot.activities
-        val visibleActivity = activities.lastOrNull {
-            it.status == RemoteConversationActivityStatus.RUNNING
-        } ?: activities.lastOrNull()
+        val visibleActivity = if (snapshot.status in ACTIVE_EXECUTION_STATUSES) {
+            activities.lastOrNull { it.status == RemoteConversationActivityStatus.RUNNING }
+        } else {
+            activities.lastOrNull()
+        }
         val messages = snapshot.messages
         return RemoteConversationDetail(
             conversation = conversation,
@@ -1007,13 +1007,48 @@ class RemoteConversationService(
         }
         runtime.record(notification)
         if (notification.method == "turn/completed") {
-            notification.params.threadId()?.let(::signalQueuedMessages)
+            notification.params.threadId()?.let { threadId ->
+                signalQueuedMessages(threadId)
+                scheduleCompletedThreadUnsubscribe(threadId)
+            }
         }
     }
 
     private fun signalQueuedMessages(threadId: String) {
         synchronized(queueLock) {
             queueSignals[threadId]?.trySend(Unit)
+        }
+    }
+
+    private fun scheduleCompletedThreadUnsubscribe(threadId: String) {
+        val controlApi = api as? CodexRemoteControlApi ?: return
+        queueScope.launch {
+            val threadLock = threadLocks.computeIfAbsent(threadId) {
+                kotlinx.coroutines.sync.Mutex()
+            }
+            threadLock.withLock {
+                // A queued message or a new turn may have claimed the thread while
+                // the completion notification was being delivered.
+                if (runtime.snapshot(threadId)?.status in ACTIVE_EXECUTION_STATUSES) return@withLock
+                if (hasQueuedMessage(threadId)) return@withLock
+                try {
+                    val response = withTimeoutOrNull(THREAD_UNSUBSCRIBE_TIMEOUT_MILLIS) {
+                        controlApi.unsubscribeThread(threadId)
+                    }
+                    if (response == null) {
+                        println("MASON completed thread unsubscribe timed out threadId=$threadId")
+                    } else {
+                        println("MASON completed thread unsubscribed threadId=$threadId")
+                    }
+                } catch (_: UnsupportedOperationException) {
+                    println("MASON thread unsubscribe is unavailable threadId=$threadId")
+                } catch (error: Exception) {
+                    println(
+                        "MASON completed thread unsubscribe failed " +
+                            "threadId=$threadId error=${error.message}",
+                    )
+                }
+            }
         }
     }
 
@@ -1461,6 +1496,7 @@ class RemoteConversationService(
         private const val MAX_SUMMARY_ATTACHMENT_NAMES = 3
         private const val MAX_EVENT_WAIT_MILLIS = 30_000L
         private const val EVENT_WAIT_SLICE_MILLIS = 100L
+        private const val THREAD_UNSUBSCRIBE_TIMEOUT_MILLIS = 5_000L
     }
 }
 
@@ -1594,7 +1630,8 @@ private class RemoteConversationRuntime {
     fun markStarted(threadId: String, turnId: String) {
         val current = states[threadId] ?: RemoteExecutionSnapshot()
         val now = System.currentTimeMillis()
-        val status = if (current.status == RemoteExecutionStatus.WAITING_FOR_APPROVAL) {
+        val sameTurn = current.turnId == turnId
+        val status = if (sameTurn && current.status == RemoteExecutionStatus.WAITING_FOR_APPROVAL) {
             RemoteExecutionStatus.WAITING_FOR_APPROVAL
         } else {
             RemoteExecutionStatus.RUNNING
@@ -1602,22 +1639,14 @@ private class RemoteConversationRuntime {
         states[threadId] = current.copy(
             turnId = turnId,
             status = status,
-            startedAt = current.startedAt ?: now,
+            startedAt = if (sameTurn) current.startedAt ?: now else now,
             completedAt = null,
-            partialAssistantText = "",
-            activeActivityTitle = if (status == RemoteExecutionStatus.WAITING_FOR_APPROVAL) {
-                "等待确认"
-            } else {
-                "正在处理"
-            },
-            activeActivityText = if (status == RemoteExecutionStatus.WAITING_FOR_APPROVAL) {
-                "等待手机确认后继续"
-            } else {
-                "正在处理请求"
-            },
-            activities = emptyList(),
+            partialAssistantText = if (sameTurn) current.partialAssistantText else "",
+            activeActivityTitle = if (sameTurn) current.activeActivityTitle else "",
+            activeActivityText = if (sameTurn) current.activeActivityText else "",
+            activities = if (sameTurn) current.activities else emptyList(),
         )
-        if (status != current.status) recordChange(threadId, turnId, status)
+        if (status != current.status || !sameTurn) recordChange(threadId, turnId, status)
     }
 
     @Synchronized
@@ -1651,7 +1680,7 @@ private class RemoteConversationRuntime {
         states[threadId] = current.copy(
             turnId = turnId ?: current.turnId,
             status = RemoteExecutionStatus.RUNNING,
-            activeActivityTitle = "正在处理",
+            activeActivityTitle = "继续执行",
             activeActivityText = "已收到确认，继续执行",
         )
         recordChange(threadId, turnId ?: current.turnId, RemoteExecutionStatus.RUNNING)
@@ -1698,17 +1727,16 @@ private class RemoteConversationRuntime {
             ?: turnId?.let { id -> states.entries.firstOrNull { it.value.turnId == id }?.key }
             ?: return
         val current = states[threadId] ?: RemoteExecutionSnapshot(turnId = turnId)
+        if (
+            notification.method != "turn/started" &&
+                turnId != null &&
+                current.turnId != null &&
+                current.turnId != turnId
+        ) {
+            return
+        }
         states[threadId] = when (notification.method) {
-            "turn/started" -> current.copy(
-                turnId = turnId ?: current.turnId,
-                status = RemoteExecutionStatus.RUNNING,
-                startedAt = current.startedAt ?: System.currentTimeMillis(),
-                completedAt = null,
-                partialAssistantText = "",
-                activeActivityTitle = "正在处理",
-                activeActivityText = "正在处理请求",
-                activities = emptyList(),
-            )
+            "turn/started" -> current.startingTurn(turnId)
             "item/agentMessage/delta" -> current.withAgentMessageDelta(notification.params)
             "item/reasoning/summaryTextDelta",
             "item/reasoning/textDelta",
@@ -1738,6 +1766,8 @@ private class RemoteConversationRuntime {
                         activity
                     }
                 },
+                activeActivityTitle = "",
+                activeActivityText = "",
                 latestCompletionId = turnId ?: current.turnId,
             )
             else -> error("Unreachable notification method: ${notification.method}")
@@ -1803,13 +1833,21 @@ private fun selectExecution(
 ): RemoteExecutionSnapshot? = when {
     live == null -> persisted
     persisted == null -> live
-    live.status in ACTIVE_EXECUTION_STATUSES &&
-    persisted.status in TERMINAL_EXECUTION_STATUSES -> live
     persisted.turnId == live.turnId && persisted.status in TERMINAL_EXECUTION_STATUSES ->
         persisted.copy(
             conversation = live.conversation ?: persisted.conversation,
             messages = if (live.messages.isNotEmpty()) live.messages else persisted.messages,
+            activities = mergeActivities(persisted.activities, live.activities),
+            startedAt = persisted.startedAt ?: live.startedAt,
+            completedAt = persisted.completedAt ?: live.completedAt,
+            activeActivityTitle = persisted.activeActivityTitle.ifBlank { live.activeActivityTitle },
+            activeActivityText = persisted.activeActivityText.ifBlank { live.activeActivityText },
         )
+    live.status in ACTIVE_EXECUTION_STATUSES &&
+        persisted.status in TERMINAL_EXECUTION_STATUSES -> live
+    persisted.status in ACTIVE_EXECUTION_STATUSES &&
+        live.status in TERMINAL_EXECUTION_STATUSES &&
+        persisted.turnId != live.turnId -> persisted
     else -> live
 }
 
@@ -1843,7 +1881,9 @@ private fun RemoteExecutionSnapshot.withAgentMessageDelta(params: JsonObject): R
         status = RemoteExecutionStatus.RUNNING,
         partialAssistantText = partialAssistantText + delta,
         activeActivityTitle = "正在组织回复",
-        activeActivityText = delta.cleanActivityText().ifBlank { activeActivityText },
+        activeActivityText = (partialAssistantText + delta)
+            .cleanActivityText()
+            .ifBlank { activeActivityText },
     )
 }
 
@@ -1853,7 +1893,7 @@ private fun RemoteExecutionSnapshot.withActivityProgress(
 ): RemoteExecutionSnapshot {
     val itemId = params.string("itemId") ?: return this
     val existing = activities.firstOrNull { it.id == itemId }
-    val seed = existing ?: method.progressActivity(itemId)
+    val seed = existing ?: method.progressActivity(itemId) ?: return this
     val progress = params.string("delta") ?: params.string("message").orEmpty()
     val nextText = appendActivityText(seed.text, progress)
     val activity = seed.copy(
@@ -1889,18 +1929,42 @@ private fun RemoteExecutionSnapshot.withItem(
         output = activity.output ?: existing?.output,
         command = activity.command ?: existing?.command,
         startedAt = existing?.startedAt ?: activity.startedAt ?: System.currentTimeMillis(),
-        completedAt = if (completed) System.currentTimeMillis() else existing?.completedAt,
+        completedAt = if (completed) {
+            activity.completedAt ?: existing?.completedAt ?: System.currentTimeMillis()
+        } else {
+            existing?.completedAt
+        },
     )
+    val updatedActivities = activities.upsertActivity(merged)
+    val activeActivity = updatedActivities.lastOrNull {
+        it.status == RemoteConversationActivityStatus.RUNNING
+    }
     return copy(
         turnId = params.turnId() ?: turnId,
         status = if (completed) status else RemoteExecutionStatus.RUNNING,
-        activities = activities.upsertActivity(merged),
-        activeActivityTitle = merged.title,
-        activeActivityText = merged.text,
+        activities = updatedActivities,
+        activeActivityTitle = activeActivity?.title
+            .orEmpty(),
+        activeActivityText = activeActivity?.text
+            .orEmpty(),
     )
 }
 
-private fun String.progressActivity(itemId: String): RemoteConversationActivity = when (this) {
+private fun RemoteExecutionSnapshot.startingTurn(turnId: String?): RemoteExecutionSnapshot {
+    val sameTurn = turnId == null || turnId == this.turnId
+    return copy(
+        turnId = turnId ?: this.turnId,
+        status = RemoteExecutionStatus.RUNNING,
+        startedAt = if (sameTurn) startedAt ?: System.currentTimeMillis() else System.currentTimeMillis(),
+        completedAt = null,
+        partialAssistantText = if (sameTurn) partialAssistantText else "",
+        activeActivityTitle = if (sameTurn) activeActivityTitle else "",
+        activeActivityText = if (sameTurn) activeActivityText else "",
+        activities = if (sameTurn) activities else emptyList(),
+    )
+}
+
+private fun String.progressActivity(itemId: String): RemoteConversationActivity? = when (this) {
     "item/reasoning/summaryTextDelta", "item/reasoning/textDelta" -> RemoteConversationActivity(
         id = itemId,
         kind = RemoteConversationActivityKind.THINKING,
@@ -1911,7 +1975,7 @@ private fun String.progressActivity(itemId: String): RemoteConversationActivity 
     "item/commandExecution/outputDelta" -> RemoteConversationActivity(
         id = itemId,
         kind = RemoteConversationActivityKind.COMMAND,
-        title = "执行代码",
+        title = "运行命令",
         status = RemoteConversationActivityStatus.RUNNING,
         startedAt = System.currentTimeMillis(),
     )
@@ -1929,13 +1993,7 @@ private fun String.progressActivity(itemId: String): RemoteConversationActivity 
         status = RemoteConversationActivityStatus.RUNNING,
         startedAt = System.currentTimeMillis(),
     )
-    else -> RemoteConversationActivity(
-        id = itemId,
-        kind = RemoteConversationActivityKind.OTHER,
-        title = "正在处理",
-        status = RemoteConversationActivityStatus.RUNNING,
-        startedAt = System.currentTimeMillis(),
-    )
+    else -> null
 }
 
 private fun List<RemoteConversationActivity>.upsertActivity(
@@ -1981,7 +2039,7 @@ private fun mergeActivityText(current: String, replacement: String): String {
 private fun JsonObject.activitySummary(): RemoteActivitySummary? = when (string("type")?.lowercase()) {
     "commandexecution" -> RemoteActivitySummary(
         RemoteConversationActivityKind.COMMAND,
-        "执行代码",
+        "运行命令",
         (string("aggregatedOutput") ?: string("command"))
             ?.cleanActivityText()
             .orEmpty(),
@@ -2047,15 +2105,22 @@ private fun JsonObject.activitySummary(): RemoteActivitySummary? = when (string(
     )
     "imagegeneration" -> RemoteActivitySummary(
         RemoteConversationActivityKind.IMAGE,
-        "生成图片",
+        "生成图像",
         (string("savedPath") ?: string("revisedPrompt") ?: string("result"))
             ?.cleanActivityText()
             .orEmpty(),
     )
     "imageview" -> RemoteActivitySummary(
         RemoteConversationActivityKind.IMAGE,
-        "查看图片",
+        "查看图像",
         string("path")?.cleanActivityText().orEmpty(),
+    )
+    "contextcompaction", "context_compaction", "compaction" -> RemoteActivitySummary(
+        RemoteConversationActivityKind.OTHER,
+        "上下文压缩",
+        listOfNotNull(string("text"), string("reason"), string("trigger"))
+            .joinToString(" ")
+            .cleanActivityText(),
     )
     else -> null
 }
@@ -2071,12 +2136,28 @@ private fun JsonObject.toRemoteActivity(completed: Boolean): RemoteConversationA
         command = summary.command,
         output = summary.output,
         status = string("status").toActivityStatus(completed),
+        startedAt = epochMillisOrNull("startedAt", "started_at", "createdAt", "created_at"),
+        completedAt = epochMillisOrNull("completedAt", "completed_at"),
     )
 }
 
 private fun String.cleanActivityText(): String = replace(Regex("\\s+"), " ")
     .trim()
     .take(MAX_ACTIVITY_TEXT_LENGTH)
+
+private fun JsonObject.epochMillisOrNull(vararg keys: String): Long? {
+    keys.forEach { key ->
+        val value = this[key] as? JsonPrimitive ?: return@forEach
+        val numeric = value.longOrNull ?: value.contentOrNull?.toLongOrNull()
+        if (numeric != null) {
+            return if (numeric in 1..999_999_999_999L) numeric * 1_000 else numeric
+        }
+        value.contentOrNull?.let { text ->
+            runCatching { Instant.parse(text).toEpochMilli() }.getOrNull()?.let { return it }
+        }
+    }
+    return null
+}
 
 private fun JsonObject.toExecutionSnapshot(): RemoteExecutionSnapshot {
     val persistedStatus = string("status").toRemoteExecutionStatus()
@@ -2099,10 +2180,14 @@ private fun JsonObject.toExecutionSnapshot(): RemoteExecutionSnapshot {
             completed = executionStatus != RemoteExecutionStatus.RUNNING || index < turnItems.lastIndex,
         )
     }
-    val activeActivity = activities.lastOrNull()
+    val activeActivity = activities.lastOrNull {
+        it.status == RemoteConversationActivityStatus.RUNNING
+    }
     return RemoteExecutionSnapshot(
         turnId = string("id"),
         status = executionStatus,
+        startedAt = epochMillisOrNull("startedAt", "started_at", "createdAt", "created_at"),
+        completedAt = epochMillisOrNull("completedAt", "completed_at"),
         latestCompletionId = string("id").takeIf { executionStatus in TERMINAL_EXECUTION_STATUSES },
         activeActivityText = activeActivity?.text.orEmpty(),
         activeActivityTitle = activeActivity?.title.orEmpty(),
