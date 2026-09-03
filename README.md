@@ -6,16 +6,9 @@
 二维码与受支持的 Windows 桌面端配对，让你可以在 Android 设备上查看和操作
 Codex 对话。CloudX 与 OpenAI 没有隶属、授权或背书关系。
 
-## 下载安装
+## 下载
 
-当前版本：**CloudX 0.1.23**
-
-手机只需安装这一个文件：
-[`CloudX-0.1.23-arm64-v8a-debug.apk`](https://github.com/DENGGL2/CloudX/releases/download/v0.1.23/CloudX-0.1.23-arm64-v8a-debug.apk)
-
-这是适用于 ARM64 Android 手机的内测安装包。不要下载 GitHub Actions 的源码
-压缩包；需要查看版本说明时，请进入
-[`v0.1.23` 发布页面](https://github.com/DENGGL2/CloudX/releases/tag/v0.1.23)。
+[**下载最新版 CloudX APK**](https://github.com/DENGGL2/CloudX/releases/download/v0.1.23/CloudX-0.1.23-arm64-v8a-debug.apk)
 
 ## 主要功能
 
@@ -159,12 +152,7 @@ device. CloudX is not affiliated with or endorsed by OpenAI.
 
 ### Download
 
-Current version: **CloudX 0.1.23**
-
-Install this single package on an ARM64 Android phone:
-[`CloudX-0.1.23-arm64-v8a-debug.apk`](https://github.com/DENGGL2/CloudX/releases/download/v0.1.23/CloudX-0.1.23-arm64-v8a-debug.apk).
-See the [`v0.1.23` release page](https://github.com/DENGGL2/CloudX/releases/tag/v0.1.23)
-for release notes.
+[**Download the latest CloudX APK**](https://github.com/DENGGL2/CloudX/releases/download/v0.1.23/CloudX-0.1.23-arm64-v8a-debug.apk)
 
 ### Highlights
 
