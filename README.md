@@ -6,6 +6,17 @@
 二维码与受支持的 Windows 桌面端配对，让你可以在 Android 设备上查看和操作
 Codex 对话。CloudX 与 OpenAI 没有隶属、授权或背书关系。
 
+## 下载安装
+
+当前版本：**CloudX 0.1.23**
+
+手机只需安装这一个文件：
+[`CloudX-0.1.23-arm64-v8a-debug.apk`](https://github.com/DENGGL2/CloudX/releases/download/v0.1.23/CloudX-0.1.23-arm64-v8a-debug.apk)
+
+这是适用于 ARM64 Android 手机的内测安装包。不要下载 GitHub Actions 的源码
+压缩包；需要查看版本说明时，请进入
+[`v0.1.23` 发布页面](https://github.com/DENGGL2/CloudX/releases/tag/v0.1.23)。
+
 ## 主要功能
 
 - 在手机上查看会话列表、对话详情、执行过程和任务结果。
@@ -14,6 +25,33 @@ Codex 对话。CloudX 与 OpenAI 没有隶属、授权或背书关系。
 - 支持附件、图片预览与任务状态通知。
 - 支持跟随系统、中文和 English 三种界面语言选项。
 - 支持原生与玻璃界面风格，并可调整字体和玻璃效果。
+
+## 对话功能
+
+### 发起新对话
+
+- 输入要交给 Codex 的任务描述。
+- 选择电脑端提供的项目和模型。
+- 按所选模型支持的范围选择推理层级。
+- 选择请求批准、帮我批准或完全访问权限；不可用的权限不会开放选择。
+- 项目、模型、推理层级和权限选项均由已配对的电脑动态提供，创建成功后会直接进入对话详情。
+
+### 对话详情结构
+
+- 用户消息、Codex 回复和执行过程按时间顺序呈现。
+- 执行活动集中分组，支持思考、命令、网页搜索、工具调用、文件修改、计划和图片等类型。
+- 显示进行中、已完成、已停止和失败状态，并在可用时显示执行耗时。
+- 运行中的执行详情自动展开，任务结束后默认收起；可随时点击查看每一步。
+- 命令活动可打开命令详情，分别查看和复制命令及输出。
+- 回复内容支持标题、列表、任务项、引用、代码块、表格和差异内容等 Markdown 展示。
+- 图片附件支持缩略图和大图预览；文件附件支持内容预览和下载。
+
+### 对话详情操作
+
+- 在发送前切换模型、推理层级和访问权限。
+- 添加图片、添加文件，或从电脑端可用列表中选择 Skill。
+- 任务运行中可以发送新指令并按设置插队或排队，也可以停止当前任务。
+- 收到权限请求时可直接允许或拒绝；离开最新位置后可一键回到最新消息。
 
 无论选择哪种网络传输方式，移动端都使用相同的配对、设备身份、权限、会话、
 对话、确认和附件协议。
@@ -119,6 +157,15 @@ Codex. It pairs with a supported Windows desktop agent through a one-time QR
 code, allowing you to view and operate Codex conversations from an Android
 device. CloudX is not affiliated with or endorsed by OpenAI.
 
+### Download
+
+Current version: **CloudX 0.1.23**
+
+Install this single package on an ARM64 Android phone:
+[`CloudX-0.1.23-arm64-v8a-debug.apk`](https://github.com/DENGGL2/CloudX/releases/download/v0.1.23/CloudX-0.1.23-arm64-v8a-debug.apk).
+See the [`v0.1.23` release page](https://github.com/DENGGL2/CloudX/releases/tag/v0.1.23)
+for release notes.
+
 ### Highlights
 
 - View conversations, execution progress, and task results from your phone.
@@ -127,6 +174,23 @@ device. CloudX is not affiliated with or endorsed by OpenAI.
 - Choose Cloudflare Tunnel or WebRTC Direct as the transport.
 - Use attachments, image previews, and task status notifications.
 - Select Follow system, Chinese, or English for the interface language.
+
+### Conversation workflow
+
+When starting a conversation, enter the task and choose a project, model,
+supported reasoning level, and access profile supplied by the paired computer.
+
+The detail screen keeps user messages, Codex replies, and execution activity in
+chronological order. Grouped activity covers reasoning, commands, web searches,
+tools, file changes, plans, and images, with status and duration where available.
+Command details expose copyable commands and output, while Markdown, image
+previews, file previews, and downloads keep results readable on the phone.
+
+Before sending, you can change the model, reasoning level, and access profile;
+attach images or files; or select an available Skill. While a task is running,
+new instructions can steer the active task or wait in the queue. You can also
+stop the task, allow or decline approval requests, and jump to the latest
+message.
 
 ### Quick start
 
