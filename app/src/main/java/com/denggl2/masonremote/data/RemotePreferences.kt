@@ -3,6 +3,7 @@ package com.denggl2.masonremote.data
 import android.content.Context
 import com.denggl2.masonremote.ui.settings.RemoteFontSizePreference
 import com.denggl2.masonremote.ui.settings.RemoteInterfaceStyle
+import com.denggl2.masonremote.ui.settings.RemoteLanguagePreference
 import com.denggl2.masonremote.ui.settings.RemoteMessageSendMode
 import com.denggl2.masonremote.ui.settings.RemoteThemeMode
 import com.denggl2.masonremote.ui.settings.TaskNotificationMode
@@ -13,6 +14,7 @@ private const val KEY_MESSAGE_SEND_MODE = "message_send_mode"
 private const val KEY_THEME_MODE = "theme_mode"
 private const val KEY_INTERFACE_STYLE = "interface_style"
 private const val KEY_FONT_SIZE = "font_size"
+private const val KEY_LANGUAGE = "language"
 private const val KEY_GLASS_REFRACTION = "glass_refraction"
 private const val KEY_GLASS_TRANSPARENCY = "glass_transparency"
 private const val KEY_GLASS_FROST = "glass_frost"
@@ -59,6 +61,12 @@ class RemotePreferences(private val context: Context) {
             ?.let { value -> RemoteFontSizePreference.entries.firstOrNull { it.name == value } }
             ?: RemoteFontSizePreference.MEDIUM
         set(value) { preferences.edit().putString(KEY_FONT_SIZE, value.name).apply() }
+
+    var language: RemoteLanguagePreference
+        get() = preferences.getString(KEY_LANGUAGE, RemoteLanguagePreference.SYSTEM.name)
+            ?.let { value -> RemoteLanguagePreference.entries.firstOrNull { it.name == value } }
+            ?: RemoteLanguagePreference.SYSTEM
+        set(value) { preferences.edit().putString(KEY_LANGUAGE, value.name).apply() }
 
     var glassRefractionEnabled: Boolean
         get() = preferences.getBoolean(KEY_GLASS_REFRACTION, true)

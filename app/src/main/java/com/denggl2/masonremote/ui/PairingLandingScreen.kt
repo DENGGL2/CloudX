@@ -28,7 +28,7 @@ import androidx.compose.material3.Button
 import androidx.compose.material3.ButtonDefaults
 import androidx.compose.material3.Icon
 import androidx.compose.material3.MaterialTheme
-import androidx.compose.material3.Text
+import androidx.compose.material3.Text as MaterialText
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.remember
 import androidx.compose.ui.Alignment
@@ -41,6 +41,7 @@ import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import com.denggl2.masonremote.transport.TransportMode
 import com.denggl2.masonremote.ui.remote.RemoteBackButton
+import com.denggl2.masonremote.ui.localizedText as Text
 
 @Composable
 fun PairingLandingScreen(
@@ -49,6 +50,7 @@ fun PairingLandingScreen(
     onStart: () -> Unit,
     onSettings: () -> Unit,
 ) {
+    val strings = LocalRemoteStrings.current
     val topInset = WindowInsets.safeDrawing.asPaddingValues().calculateTopPadding()
     val pairingBackground = MaterialTheme.colorScheme.background
     val secondaryTextColor = MaterialTheme.colorScheme.onSurfaceVariant
@@ -60,7 +62,7 @@ fun PairingLandingScreen(
         RemoteBackButton(
             onClick = onSettings,
             icon = Icons.Outlined.Settings,
-            contentDescription = "设置",
+            contentDescription = strings.t("设置"),
             modifier = Modifier.padding(start = 8.dp, top = topInset + 8.dp),
         )
         Box(
@@ -91,7 +93,7 @@ fun PairingLandingScreen(
                 }
                 Spacer(Modifier.height(17.dp))
                 Text(
-                    text = "电脑端启动后扫码配对",
+                    text = strings.t("电脑端启动后扫码配对"),
                     color = secondaryTextColor,
                     fontSize = 14.sp,
                     lineHeight = 17.sp,
@@ -115,7 +117,7 @@ fun PairingLandingScreen(
                     verticalArrangement = Arrangement.spacedBy(6.dp),
                 ) {
                     Text(
-                        text = "请选择连接方式",
+                        text = strings.t("请选择连接方式"),
                         color = secondaryTextColor,
                         fontSize = 14.sp,
                         lineHeight = 17.sp,
@@ -128,9 +130,9 @@ fun PairingLandingScreen(
                     )
                 }
                 PairingModeOption(
-                    title = "Cloudflare 隧道",
-                    description = "中转，电脑端重启需要重新配对",
-                    titleWidth = 108.dp,
+                    title = strings.t("Cloudflare 隧道"),
+                    description = strings.text("中转，电脑端重启需要重新配对", "Relay; re-pair after restart"),
+                    titleWidth = if (strings.isEnglish) 128.dp else 108.dp,
                     rowHeight = 33.dp,
                     titleSize = 14.sp,
                     titleLineHeight = 17.sp,
@@ -139,9 +141,9 @@ fun PairingLandingScreen(
                     onClick = { onModeSelected(TransportMode.CLOUDFLARE_TUNNEL) },
                 )
                 PairingModeOption(
-                    title = "WebRTC 直连",
-                    description = "手机直连，信令服务器配对",
-                    titleWidth = 96.dp,
+                    title = strings.t("WebRTC 直连"),
+                    description = strings.text("手机直连，信令服务器配对", "Direct; pair via signaling server"),
+                    titleWidth = if (strings.isEnglish) 108.dp else 96.dp,
                     rowHeight = 34.dp,
                     titleSize = 15.sp,
                     titleLineHeight = 18.sp,
@@ -163,7 +165,7 @@ fun PairingLandingScreen(
                         contentColor = MaterialTheme.colorScheme.onPrimary,
                     ),
                 ) {
-                    Text("开始", fontSize = 14.sp, fontWeight = FontWeight.Medium)
+                    Text(strings.t("开始"), fontSize = 14.sp, fontWeight = FontWeight.Medium)
                 }
             }
         }

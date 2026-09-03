@@ -1,40 +1,154 @@
 # CloudX
 
-[English](README.md) | [简体中文](README.zh-CN.md)
+**中文** | [English](#english)
+
+`CloudX` 是一个面向 Codex 的独立第三方 Android 远程控制客户端。它通过一次性
+二维码与受支持的 Windows 桌面端配对，让你可以在 Android 设备上查看和操作
+Codex 对话。CloudX 与 OpenAI 没有隶属、授权或背书关系。
+
+## 主要功能
+
+- 在手机上查看会话列表、对话详情、执行过程和任务结果。
+- 新建对话、发送消息，并处理电脑端发起的权限确认。
+- 通过一次性二维码完成设备配对，支持 Cloudflare Tunnel 和 WebRTC Direct。
+- 支持附件、图片预览与任务状态通知。
+- 支持跟随系统、中文和 English 三种界面语言选项。
+- 支持原生与玻璃界面风格，并可调整字体和玻璃效果。
+
+无论选择哪种网络传输方式，移动端都使用相同的配对、设备身份、权限、会话、
+对话、确认和附件协议。
+
+## 使用流程
+
+1. 在 Android 手机上安装 CloudX APK。
+2. 在需要配对的 Windows 电脑上克隆本仓库并准备运行环境。
+3. 启动 `desktop-connector\pair.bat`。默认使用 Cloudflare Tunnel；传入 `2`
+   使用 WebRTC Direct。
+4. 手机端选择相同的连接方式并点击“开始”。
+5. 扫描桌面端显示的二维码，核对设备信息后确认配对。
+
+```powershell
+.\desktop-connector\pair.bat
+```
+
+## 连接方式
+
+### Cloudflare Tunnel
+
+Cloudflare 模式使用 Quick Tunnel，不需要账号、域名或令牌。Quick Tunnel 地址会
+在桌面端重启后变化，因此每次重新启动后都需要扫描新二维码。
+
+`cloudflared.exe` 必须位于 `PATH` 中，也可以通过
+`CLOUDX_CLOUDFLARED_PATH` 指定完整路径。Cloudflare 承载远程 HTTPS 请求；
+本地 Connector 服务仍只监听 `127.0.0.1`，应用层挑战-响应认证仍然启用。
+
+### WebRTC Direct
+
+WebRTC 模式会启动仓库内的信令服务，并通过公开的 HTTPS Quick Tunnel 暴露信令
+入口。正常对话和文件数据通过加密 DataChannel 或 TURN 中继传输，Cloudflare
+不承载这些数据。
+
+STUN 本身不能跨网络中继数据。如需提高受限网络下的连接成功率，请配置短时
+有效的 TURN 凭据，并在手机网络阻止 UDP 时提供 TCP/443 地址：
+
+```powershell
+$env:CLOUDX_WEBRTC_TURN_SERVERS = "turns:turn.example.com:443|username|credential"
+.\desktop-connector\pair.bat 2
+```
+
+使用 Cloudflare Realtime TURN 时，请将长期密钥和 API Token 保留在 Windows
+电脑上，由 `pair.bat` 为每次配对生成短时凭据：
+
+```powershell
+$env:CLOUDX_CLOUDFLARE_TURN_KEY_ID = "your-turn-key-id"
+$env:CLOUDX_CLOUDFLARE_TURN_API_TOKEN = "your-turn-api-token"
+.\desktop-connector\pair.bat 2
+```
+
+如果未配置 TURN，WebRTC 仍会尝试直连，但在 NAT 或防火墙限制下可能失败。
+Cloudflare Quick Tunnel 也不能保证在所有网络环境下都无需 VPN。
+
+## 配对与安全
+
+二维码只包含短时有效的签名引导数据。手机完成配对后只保存设备身份和授权
+路由，不保存一次性二维码令牌或 nonce。过期或重复使用的配对邀请会被拒绝，
+桌面 Connector 也可以从状态存储中撤销已授权的手机。
+
+TURN 长期密钥和 API Token 不会写入二维码或打包进 APK。提交日志或截图前，
+请移除二维码、配对令牌、TURN 凭据、访问令牌及其他敏感信息。
+
+## 从源码构建
+
+需要 JDK 17、Node.js、Android SDK、Gradle 构建环境、Codex CLI 和
+`cloudflared.exe`。使用以下命令构建手机 ARM64 Debug APK：
+
+```powershell
+.\gradlew.bat :app:assembleDebug -Parm64Only=true
+```
+
+APK 输出到 `app/build/outputs/apk/debug/`。
+
+### 版本规则
+
+- `versionName` 是用户可见的语义化版本号，功能和修复版本递增补丁号。
+- `versionCode` 是 Android 使用的单调递增更新编号，每个分发版本都必须增加。
+
+## 自动构建
+
+[GitHub Actions](https://github.com/DENGGL2/CloudX/actions) 会构建并上传 ARM64
+Debug APK。发布正式版本前，请配置 Android SDK 和正式发布签名密钥。
+
+## 支持与联系方式
+
+Bug、功能建议和项目问题请提交到
+[GitHub Issues](https://github.com/DENGGL2/CloudX/issues)。
+
+## 许可证
+
+CloudX 使用 [MIT 许可证](LICENSE)。第三方依赖和随项目发布的资源可能受其
+各自许可证约束。
+
+---
+
+<a id="english"></a>
+
+## English
 
 `CloudX` is an independent, third-party Android remote-control client for
 Codex. It pairs with a supported Windows desktop agent through a one-time QR
-code, allowing Codex conversations to be viewed and operated remotely from an
-Android device. CloudX is not affiliated with or endorsed by OpenAI.
+code, allowing you to view and operate Codex conversations from an Android
+device. CloudX is not affiliated with or endorsed by OpenAI.
 
-The mobile client keeps the same pairing, device identity, permission, session,
-conversation, approval, and attachment protocol regardless of the selected
-network transport.
+### Highlights
 
-## Screenshots
+- View conversations, execution progress, and task results from your phone.
+- Start conversations, send messages, and handle approval requests remotely.
+- Pair through a signed, short-lived QR code.
+- Choose Cloudflare Tunnel or WebRTC Direct as the transport.
+- Use attachments, image previews, and task status notifications.
+- Select Follow system, Chinese, or English for the interface language.
 
-Product screenshots will be added here. Store them under
-`docs/screenshots/` and keep captions focused on the user workflow.
+### Quick start
 
-## User flow
+1. Install the CloudX APK on Android.
+2. Run the Windows Agent from this repository:
 
-1. Install the APK on Android.
-2. Start the Windows Agent with `desktop-connector\pair.bat` (Cloudflare by
-   default; pass `2` for WebRTC Direct).
-3. Use the matching transport:
-   - `Cloudflare Tunnel`: Quick Tunnel, no domain or token; the URL changes after restart, so scan again.
-   - `WebRTC Direct`: direct encrypted DataChannel when NAT allows it; the launcher starts a public HTTPS signaling entry point.
-4. Select the same transport on the phone and tap `开始`.
-5. Scan the QR code shown by the Agent and confirm pairing.
+```powershell
+.\desktop-connector\pair.bat
+```
 
-The QR code contains only short-lived signed bootstrap data. The phone stores
-the device identity and authorized route after pairing, never the one-time QR
-token or nonce. A connector can revoke an authorized phone from its state store;
-expired offers and reused offers are rejected.
+3. Select the same transport on the phone and scan the new QR code. Pass `2`
+   to `pair.bat` to use WebRTC Direct.
 
-## Build from source
+Cloudflare mode uses a free Quick Tunnel and requires a new QR code after the
+Agent restarts. WebRTC conversation and file data travel over an encrypted
+DataChannel or TURN relay; Cloudflare is used only as the HTTPS signaling
+entry point in this mode. Configure short-lived TURN credentials when direct
+connectivity is unreliable.
 
-Build the ARM64 debug APK with Gradle:
+### Build
+
+Build the ARM64 Debug APK with JDK 17 and the Android SDK:
 
 ```powershell
 .\gradlew.bat :app:assembleDebug -Parm64Only=true
@@ -42,95 +156,8 @@ Build the ARM64 debug APK with Gradle:
 
 The APK is written to `app/build/outputs/apk/debug/`.
 
-### Versioning
+Please remove QR codes, pairing tokens, TURN credentials, access tokens, and
+other secrets before attaching logs or screenshots to
+[GitHub Issues](https://github.com/DENGGL2/CloudX/issues).
 
-- `versionName` is the user-facing semantic version. Feature and fix releases
-  increment the patch number.
-- `versionCode` is Android's monotonic update number and increases with each
-  distributed app version.
-
-## Windows Agent prerequisites
-
-The Windows Agent is part of this checkout. Install JDK 17, Node.js, the
-Android/Gradle build prerequisites, Codex CLI, and `cloudflared.exe`. Then run
-the pairing launcher from this repository:
-
-```powershell
-.\desktop-connector\pair.bat
-```
-
-For Cloudflare mode, `cloudflared.exe` must be available on `PATH`, or set
-`CLOUDX_CLOUDFLARED_PATH` to its full path. Quick Tunnel is free and does
-not need an account, domain, or token. Cloudflare carries the remote HTTPS
-requests; the local Connector service still listens only on `127.0.0.1` and
-application challenge-response authentication remains enabled.
-
-For WebRTC mode, the launcher starts the bundled signaling service and exposes
-it through a public HTTPS Quick Tunnel. It stores short-lived SDP and ICE
-records only; normal conversation and file data travel over the encrypted
-DataChannel or its TURN relay. STUN alone is not a cross-network relay. For
-reliable remote pairing without a VPN, configure short-lived TURN credentials,
-including a TCP/443 endpoint when the phone network blocks UDP:
-`CLOUDX_WEBRTC_TURN_SERVERS=url|username|credential;url|username|credential`.
-The credentials are copied into the short-lived QR route and are never bundled
-into the APK. A Cloudflare Quick Tunnel is not a guaranteed no-VPN endpoint.
-
-## Automated builds
-
-The [GitHub Actions workflow](https://github.com/DENGGL2/CloudX/actions) builds
-and uploads the ARM64 debug APK.
-Configure Android SDK and a release signing key before publishing a formal
-signed release.
-
-## Quick start
-
-Clone this repository and run the Windows Agent on the computer that will be
-paired:
-
-```powershell
-.\desktop-connector\pair.bat
-```
-
-The launcher starts without a console window and uses Cloudflare Tunnel by
-default. Pass `2` for RTC Direct. In RTC mode it starts the bundled signaling
-service and exposes only that signaling service through a Cloudflare Quick
-Tunnel; it then opens a fresh QR code image. The phone must select the same
-mode before tapping `开始`. A new QR file and a new Quick Tunnel URL are
-created on each run, so an old QR code is never reused.
-
-For reliable RTC connections across restrictive networks, configure short-
-lived TURN credentials before starting the launcher:
-
-```powershell
-$env:CLOUDX_WEBRTC_TURN_SERVERS = "turns:turn.example.com:443|username|credential"
-```
-
-When using Cloudflare Realtime TURN, keep the long-lived TURN key and API token
-on the Windows desktop and let `pair.bat` mint a short-lived credential for
-each pairing run:
-
-```powershell
-$env:CLOUDX_CLOUDFLARE_TURN_KEY_ID = "your-turn-key-id"
-$env:CLOUDX_CLOUDFLARE_TURN_API_TOKEN = "your-turn-api-token"
-.\desktop-connector\pair.bat
-```
-
-The key and API token are never written to the QR code or APK. If neither TURN
-configuration is present, RTC remains best-effort and may fail behind NAT or
-firewall restrictions.
-
-WebRTC conversation data uses the encrypted DataChannel (or TURN relay).
-Cloudflare is only the HTTPS signaling entry point in this mode, not the
-conversation data path.
-
-## Support and contact
-
-Use [GitHub Issues](https://github.com/DENGGL2/CloudX/issues) for bug reports,
-feature requests, and project questions. Please remove QR codes, pairing
-tokens, TURN credentials, access tokens, and other secrets before attaching
-logs or screenshots.
-
-## License
-
-CloudX is licensed under the [MIT License](LICENSE). Third-party dependencies
-and bundled assets may be subject to their own licenses.
+CloudX is licensed under the [MIT License](LICENSE).

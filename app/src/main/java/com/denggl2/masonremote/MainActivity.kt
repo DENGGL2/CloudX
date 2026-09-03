@@ -1,7 +1,10 @@
 package com.denggl2.masonremote
 
 import android.Manifest
+import android.content.Context
 import android.content.Intent
+import android.content.res.Configuration
+import android.content.res.Resources
 import android.graphics.drawable.ColorDrawable
 import android.util.Base64
 import android.os.Bundle
@@ -27,6 +30,7 @@ import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.CompositionLocalProvider
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
@@ -43,11 +47,14 @@ import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.unit.dp
 import android.widget.Toast
 import androidx.compose.runtime.DisposableEffect
+import androidx.compose.runtime.saveable.rememberSaveable
 import com.denggl2.masonremote.data.PairingStore
 import com.denggl2.masonremote.data.RemotePreferences
 import com.denggl2.masonremote.diagnostics.DiagnosticLog
 import com.denggl2.masonremote.notification.RemoteNotificationManager
 import com.denggl2.masonremote.ui.MasonRemoteTheme
+import com.denggl2.masonremote.ui.LocalRemoteStrings
+import com.denggl2.masonremote.ui.resolveRemoteStrings
 import com.denggl2.masonremote.ui.DisconnectedScreen
 import com.denggl2.masonremote.ui.PairingLandingScreen
 import com.denggl2.masonremote.ui.pairing.PairingSheet
@@ -56,6 +63,7 @@ import com.denggl2.masonremote.ui.remote.RemoteConversationDetailScreen
 import com.denggl2.masonremote.ui.remote.PairingDisconnectDialog
 import com.denggl2.masonremote.ui.settings.RemoteFontSizePreference
 import com.denggl2.masonremote.ui.settings.RemoteInterfaceStyle
+import com.denggl2.masonremote.ui.settings.RemoteLanguagePreference
 import com.denggl2.masonremote.ui.settings.RemoteMessageSendMode
 import com.denggl2.masonremote.ui.settings.RemoteThemeMode
 import com.denggl2.masonremote.ui.settings.TaskNotificationMode
@@ -63,6 +71,7 @@ import com.denggl2.masonremote.ui.settings.SettingsScreen
 import com.denggl2.masonremote.ui.remote.RemoteConversationListViewModel
 import com.denggl2.masonremote.transport.TransportMode
 import com.denggl2.masonremote.transport.parsePairingOffer
+import java.util.Locale
 
 private sealed interface RemotePage {
     data object Pairing : RemotePage
@@ -77,6 +86,11 @@ class MainActivity : ComponentActivity() {
     private val debugPairingPayload = mutableStateOf<String?>(null)
     private val debugThreadId = mutableStateOf<String?>(null)
     private val debugList = mutableStateOf(false)
+
+    override fun attachBaseContext(newBase: Context) {
+        val language = RemotePreferences(newBase).language
+        super.attachBaseContext(newBase.withRemoteLanguage(language))
+    }
 
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
@@ -122,14 +136,13 @@ private fun MasonRemoteApp(
     val appContext = context.applicationContext
     val store = remember(appContext) { PairingStore(appContext) }
     val preferences = remember(appContext) { RemotePreferences(appContext) }
-    val notificationManager = remember(appContext) { RemoteNotificationManager(appContext) }
     var isPaired by remember { mutableStateOf(store.isPaired) }
     var pairingRevision by remember { mutableIntStateOf(0) }
     var showPairingSheet by remember { mutableStateOf(debugPairingPayload != null) }
     var showPairingChooser by remember { mutableStateOf(!isPaired && debugPairingPayload == null) }
     var selectedPairingMode by remember { mutableStateOf<TransportMode?>(TransportMode.CLOUDFLARE_TUNNEL) }
     var activeTransportMode by remember { mutableStateOf(store.load()?.transportMode) }
-    var showSettings by remember { mutableStateOf(false) }
+    var showSettings by rememberSaveable { mutableStateOf(false) }
     var selectedRemoteConversationId by remember { mutableStateOf(debugThreadId) }
     val remoteConversationDrafts = remember { mutableStateMapOf<String, String>() }
     var showDisconnected by remember { mutableStateOf(false) }
@@ -138,11 +151,16 @@ private fun MasonRemoteApp(
     var themeMode by remember { mutableStateOf(preferences.themeMode) }
     var interfaceStyle by remember { mutableStateOf(preferences.interfaceStyle) }
     var fontSize by remember { mutableStateOf(preferences.fontSize) }
+    var language by remember { mutableStateOf(preferences.language) }
     var glassRefractionEnabled by remember { mutableStateOf(preferences.glassRefractionEnabled) }
     var glassTransparency by remember { mutableStateOf(preferences.glassTransparency) }
     var glassFrost by remember { mutableStateOf(preferences.glassFrost) }
     var notificationMode by remember { mutableStateOf(preferences.taskNotificationMode) }
     var messageSendMode by remember { mutableStateOf(preferences.messageSendMode) }
+    val remoteStrings = resolveRemoteStrings(language)
+    val notificationManager = remember(appContext, remoteStrings.language) {
+        RemoteNotificationManager(appContext, remoteStrings.isEnglish)
+    }
     val remoteViewModel = remember(isPaired, pairingRevision, appContext, debugList) {
         RemoteConversationListViewModel(
             pairedConnector = store.load(),
@@ -194,7 +212,10 @@ private fun MasonRemoteApp(
         } else if (!granted && pending != null) {
             Toast.makeText(
                 context,
-                "通知权限未授予，通知模式已保存，但暂时无法发送通知",
+                remoteStrings.text(
+                    "通知权限未授予，通知模式已保存，但暂时无法发送通知",
+                    "Notification permission was not granted. The notification mode was saved, but notifications cannot be sent yet",
+                ),
                 Toast.LENGTH_SHORT,
             ).show()
         }
@@ -213,14 +234,17 @@ private fun MasonRemoteApp(
         } else {
             val result = notificationManager.preview(mode)
             if (!result.sent && result.message != null) {
-                Toast.makeText(context, result.message, Toast.LENGTH_SHORT).show()
+                Toast.makeText(context, remoteStrings.displayText(result.message), Toast.LENGTH_SHORT).show()
             }
         }
     }
 
     LaunchedEffect(remoteViewModel) {
         remoteViewModel.notificationEvents.collect { event ->
-            notificationManager.notifyTaskEvent(event, latestNotificationMode)
+            notificationManager.notifyTaskEvent(
+                event,
+                latestNotificationMode,
+            )
         }
     }
 
@@ -293,6 +317,9 @@ private fun MasonRemoteApp(
         glassTransparency = glassTransparency,
         glassFrost = glassFrost,
     ) {
+        CompositionLocalProvider(
+            LocalRemoteStrings provides remoteStrings,
+        ) {
         val activity = context as? ComponentActivity
         val windowBackground = MaterialTheme.colorScheme.background
         SideEffect {
@@ -388,6 +415,7 @@ private fun MasonRemoteApp(
                     themeMode = themeMode,
                     interfaceStyle = interfaceStyle,
                     fontSize = fontSize,
+                    language = language,
                     glassRefractionEnabled = glassRefractionEnabled,
                     glassTransparency = glassTransparency,
                     glassFrost = glassFrost,
@@ -409,6 +437,11 @@ private fun MasonRemoteApp(
                     onFontSizeChange = {
                         fontSize = it
                         preferences.fontSize = it
+                    },
+                    onLanguageChange = {
+                        language = it
+                        preferences.language = it
+                        activity?.recreate()
                     },
                     onGlassRefractionChange = {
                         glassRefractionEnabled = it
@@ -472,9 +505,12 @@ private fun MasonRemoteApp(
                     },
                     errorCode = remoteUiState.errorMessage
                         ?.let { message ->
-                            "错误码${Integer.toHexString(message.hashCode()).uppercase().padStart(8, '0')}"
+                            remoteStrings.text(
+                                "错误码${Integer.toHexString(message.hashCode()).uppercase().padStart(8, '0')}",
+                                "Error ${Integer.toHexString(message.hashCode()).uppercase().padStart(8, '0')}",
+                            )
                         }
-                        ?: "错误码XXXXXXXXXXXXXXXXXXX",
+                        ?: remoteStrings.text("错误码XXXXXXXXXXXXXXXXXXX", "Error XXXXXXXXXXXXXXXXXXX"),
                 )
             }
         }
@@ -516,7 +552,24 @@ private fun MasonRemoteApp(
             },
         )
 
+        }
     }
+}
+
+private fun Context.withRemoteLanguage(preference: RemoteLanguagePreference): Context {
+    val systemLanguage = Resources.getSystem().configuration.locales[0]?.language.orEmpty()
+    val locale = when (preference) {
+        RemoteLanguagePreference.CHINESE -> Locale.SIMPLIFIED_CHINESE
+        RemoteLanguagePreference.ENGLISH -> Locale.ENGLISH
+        RemoteLanguagePreference.SYSTEM -> if (systemLanguage.startsWith("zh", ignoreCase = true)) {
+            Locale.SIMPLIFIED_CHINESE
+        } else {
+            Locale.ENGLISH
+        }
+    }
+    return createConfigurationContext(
+        Configuration(resources.configuration).apply { setLocale(locale) },
+    )
 }
 
 private fun Intent?.remoteThreadId(): String? =

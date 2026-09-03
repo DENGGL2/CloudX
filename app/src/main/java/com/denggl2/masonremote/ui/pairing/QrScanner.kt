@@ -16,7 +16,7 @@ import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material3.MaterialTheme
-import androidx.compose.material3.Text
+import androidx.compose.material3.Text as MaterialText
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.DisposableEffect
 import androidx.compose.runtime.LaunchedEffect
@@ -39,6 +39,8 @@ import com.google.mlkit.vision.barcode.BarcodeScannerOptions
 import com.google.mlkit.vision.barcode.BarcodeScanning
 import com.google.mlkit.vision.barcode.common.Barcode
 import com.google.mlkit.vision.common.InputImage
+import com.denggl2.masonremote.ui.localizedText as Text
+import com.denggl2.masonremote.ui.LocalRemoteStrings
 import java.util.concurrent.Executors
 
 @Composable
@@ -125,7 +127,7 @@ fun QrScanner(
         )
         if (!cameraReady) {
             Text(
-                text = "正在打开相机…",
+                text = LocalRemoteStrings.current.t("正在打开相机…"),
                 color = Color.White,
                 style = MaterialTheme.typography.bodyMedium,
                 modifier = Modifier.padding(16.dp),

@@ -62,7 +62,7 @@ import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Scaffold
 import androidx.compose.material3.Switch
 import androidx.compose.material3.SwitchDefaults
-import androidx.compose.material3.Text
+import androidx.compose.material3.Text as MaterialText
 import androidx.compose.material3.TextButton
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.CompositionLocalProvider
@@ -166,6 +166,11 @@ import com.denggl2.masonremote.ui.theme.resolveBackdropCaptureScale
 import com.denggl2.masonremote.ui.theme.windowBackdrop
 import com.denggl2.masonremote.ui.chat.masonGlassShadow
 import com.denggl2.masonremote.ui.remote.RemoteBackButton
+import com.denggl2.masonremote.ui.localizedText as Text
+import com.denggl2.masonremote.ui.LocalRemoteStrings
+import com.denggl2.masonremote.ui.localizedLabel
+import com.denggl2.masonremote.ui.localizedSummary
+import com.denggl2.masonremote.ui.localizedCacheMessage
 import dev.chrisbanes.haze.HazeState
 
 enum class RemoteThemeMode(val label: String) {
@@ -184,6 +189,12 @@ enum class RemoteFontSizePreference(val label: String) {
     MEDIUM("中"),
     LARGE("大"),
     EXTRA_LARGE("超大"),
+}
+
+enum class RemoteLanguagePreference(val label: String) {
+    SYSTEM("跟随系统"),
+    CHINESE("中文"),
+    ENGLISH("English"),
 }
 
 enum class TaskNotificationMode(val label: String, val summary: String) {
@@ -207,6 +218,7 @@ fun SettingsScreen(
     themeMode: RemoteThemeMode,
     interfaceStyle: RemoteInterfaceStyle,
     fontSize: RemoteFontSizePreference,
+    language: RemoteLanguagePreference,
     glassRefractionEnabled: Boolean,
     glassTransparency: Float,
     glassFrost: Float,
@@ -217,6 +229,7 @@ fun SettingsScreen(
     onThemeModeChange: (RemoteThemeMode) -> Unit,
     onInterfaceStyleChange: (RemoteInterfaceStyle) -> Unit,
     onFontSizeChange: (RemoteFontSizePreference) -> Unit,
+    onLanguageChange: (RemoteLanguagePreference) -> Unit,
     onGlassRefractionChange: (Boolean) -> Unit,
     onGlassTransparencyChange: (Float) -> Unit,
     onGlassFrostChange: (Float) -> Unit,
@@ -224,6 +237,7 @@ fun SettingsScreen(
     onMessageSendModeChange: (RemoteMessageSendMode) -> Unit,
 ) {
     var page by remember { mutableStateOf(SettingsPage.OVERVIEW) }
+    val strings = LocalRemoteStrings.current
     val scrollState = rememberScrollState()
     val settingsInterfaceEffects = LocalInterfaceEffects.current
     val settingsEdgeBlurState = rememberProgressiveEdgeBlurState(
@@ -325,12 +339,14 @@ fun SettingsScreen(
                                 AppearanceSettingsContent(
                                     selectedMode = themeMode,
                                     selectedStyle = interfaceStyle,
+                                    selectedLanguage = language,
                                     glassRefractionEnabled = glassRefractionEnabled,
                                     glassTransparency = glassTransparency,
                                     glassFrost = glassFrost,
                                     selectedFontSize = fontSize,
                                     onModeChange = onThemeModeChange,
                                     onStyleChange = onInterfaceStyleChange,
+                                    onLanguageChange = onLanguageChange,
                                     onGlassRefractionChange = onGlassRefractionChange,
                                     onGlassTransparencyPreview = onGlassTransparencyChange,
                                     onGlassTransparencyCommit = onGlassTransparencyChange,
@@ -414,12 +430,14 @@ fun SettingsScreen(
 private fun AppearanceSettingsContent(
     selectedMode: RemoteThemeMode,
     selectedStyle: RemoteInterfaceStyle,
+    selectedLanguage: RemoteLanguagePreference,
     glassRefractionEnabled: Boolean,
     glassTransparency: Float,
     glassFrost: Float,
     selectedFontSize: RemoteFontSizePreference,
     onModeChange: (RemoteThemeMode) -> Unit,
     onStyleChange: (RemoteInterfaceStyle) -> Unit,
+    onLanguageChange: (RemoteLanguagePreference) -> Unit,
     onGlassRefractionChange: (Boolean) -> Unit,
     onGlassTransparencyPreview: (Float) -> Unit,
     onGlassTransparencyCommit: (Float) -> Unit,
@@ -431,6 +449,8 @@ private fun AppearanceSettingsContent(
         ThemeModeSelectionRow(selectedMode, onModeChange)
         GroupDivider()
         FontSizeSelectionRow(selectedFontSize, onFontSizeChange)
+        GroupDivider()
+        LanguageSelectionRow(selectedLanguage, onLanguageChange)
         GroupDivider()
         InterfaceStyleSelectionRow(selectedStyle, onStyleChange)
         if (selectedStyle == RemoteInterfaceStyle.GLASS) {
@@ -468,20 +488,21 @@ private fun TaskNotificationSettingsContent(
     onModeChange: (TaskNotificationMode) -> Unit,
 ) {
     var expanded by remember { mutableStateOf(false) }
+    val strings = LocalRemoteStrings.current
     SettingGroup {
         SelectionSettingRow(
             title = "任务通知",
-            value = selectedMode.summary,
+            value = selectedMode.localizedSummary(strings),
             expanded = expanded,
             onClick = { expanded = !expanded },
             onDismiss = { expanded = false },
             menuContent = {
                 TaskNotificationMode.entries.forEach { mode ->
                     DropdownMenuItem(
-                        text = { Text(mode.label) },
+                        text = { Text(mode.localizedLabel(strings)) },
                         trailingIcon = {
                             if (mode == selectedMode) {
-                                Icon(Icons.Outlined.Check, contentDescription = "当前选项")
+                                Icon(Icons.Outlined.Check, contentDescription = strings.t("当前选项"))
                             }
                         },
                         onClick = {
@@ -501,20 +522,21 @@ private fun MessageSendSettingsContent(
     onModeChange: (RemoteMessageSendMode) -> Unit,
 ) {
     var expanded by remember { mutableStateOf(false) }
+    val strings = LocalRemoteStrings.current
     SettingGroup {
         SelectionSettingRow(
             title = "进行中发送消息",
-            value = selectedMode.label,
+            value = selectedMode.localizedLabel(strings),
             expanded = expanded,
             onClick = { expanded = !expanded },
             onDismiss = { expanded = false },
             menuContent = {
                 RemoteMessageSendMode.entries.forEach { mode ->
                     DropdownMenuItem(
-                        text = { Text(mode.label) },
+                        text = { Text(mode.localizedLabel(strings)) },
                         trailingIcon = {
                             if (mode == selectedMode) {
-                                Icon(Icons.Outlined.Check, contentDescription = "当前选项")
+                                Icon(Icons.Outlined.Check, contentDescription = strings.t("当前选项"))
                             }
                         },
                         onClick = {
@@ -578,6 +600,7 @@ private fun AboutSettingsContent() {
 @Composable
 private fun OtherSettingsContent() {
     val context = LocalContext.current
+    val strings = LocalRemoteStrings.current
     val scope = rememberCoroutineScope()
     val exportLogLauncher = rememberLauncherForActivityResult(
         ActivityResultContracts.CreateDocument("text/plain"),
@@ -589,7 +612,10 @@ private fun OtherSettingsContent() {
             }
             Toast.makeText(
                 context,
-                result.fold({ "诊断日志已导出" }, { "诊断日志导出失败：${it.message ?: "未知错误"}" }),
+                result.fold(
+                    { strings.t("诊断日志已导出") },
+                    { "诊断日志导出失败：${it.message ?: strings.t("未知错误")}".let(strings::displayText) },
+                ),
                 Toast.LENGTH_LONG,
             ).show()
         }
@@ -688,7 +714,7 @@ private fun OtherSettingsContent() {
                                 showClearCacheDialog = false
                                 Toast.makeText(
                                     context,
-                                    if (cleared) "图片预览缓存已清理" else "缓存清理失败",
+                                    strings.localizedCacheMessage(cleared),
                                     Toast.LENGTH_SHORT,
                                 ).show()
                             },
@@ -762,11 +788,8 @@ private fun ThemeModeSelectionRow(
     onModeChange: (RemoteThemeMode) -> Unit,
 ) {
     var expanded by remember { mutableStateOf(false) }
-    val options = listOf(
-        RemoteThemeMode.SYSTEM to "跟随系统",
-        RemoteThemeMode.LIGHT to "浅色",
-        RemoteThemeMode.DARK to "深色",
-    )
+    val strings = LocalRemoteStrings.current
+    val options = RemoteThemeMode.entries.map { it to it.localizedLabel(strings) }
     AppearanceValueRow(
         title = "深色模式",
         value = options.first { it.first == selectedMode }.second,
@@ -778,7 +801,9 @@ private fun ThemeModeSelectionRow(
                 DropdownMenuItem(
                     text = { Text(label) },
                     trailingIcon = {
-                        if (mode == selectedMode) Icon(Icons.Outlined.Check, contentDescription = "当前模式")
+                        if (mode == selectedMode) {
+                            Icon(Icons.Outlined.Check, contentDescription = strings.t("当前模式"))
+                        }
                     },
                     onClick = {
                         expanded = false
@@ -796,10 +821,11 @@ private fun FontSizeSelectionRow(
     onFontSizeChange: (RemoteFontSizePreference) -> Unit,
 ) {
     var expanded by remember { mutableStateOf(false) }
-    val options = RemoteFontSizePreference.entries.map { it to it.label }
+    val strings = LocalRemoteStrings.current
+    val options = RemoteFontSizePreference.entries.map { it to it.localizedLabel(strings) }
     AppearanceValueRow(
         title = "字体大小",
-        value = selectedFontSize.label,
+        value = selectedFontSize.localizedLabel(strings),
         expanded = expanded,
         onClick = { expanded = !expanded },
         onDismiss = { expanded = false },
@@ -808,11 +834,45 @@ private fun FontSizeSelectionRow(
                 DropdownMenuItem(
                     text = { Text(label) },
                     trailingIcon = {
-                        if (fontSize == selectedFontSize) Icon(Icons.Outlined.Check, contentDescription = "当前字体大小")
+                        if (fontSize == selectedFontSize) {
+                            Icon(Icons.Outlined.Check, contentDescription = strings.t("当前字体大小"))
+                        }
                     },
                     onClick = {
                         expanded = false
                         onFontSizeChange(fontSize)
+                    },
+                )
+            }
+        },
+    )
+}
+
+@Composable
+private fun LanguageSelectionRow(
+    selectedLanguage: RemoteLanguagePreference,
+    onLanguageChange: (RemoteLanguagePreference) -> Unit,
+) {
+    var expanded by remember { mutableStateOf(false) }
+    val strings = LocalRemoteStrings.current
+    AppearanceValueRow(
+        title = "语言",
+        value = selectedLanguage.localizedLabel(strings),
+        expanded = expanded,
+        onClick = { expanded = !expanded },
+        onDismiss = { expanded = false },
+        menuContent = {
+            RemoteLanguagePreference.entries.forEach { language ->
+                DropdownMenuItem(
+                    text = { Text(language.localizedLabel(strings)) },
+                    trailingIcon = {
+                        if (language == selectedLanguage) {
+                            Icon(Icons.Outlined.Check, contentDescription = strings.t("当前语言"))
+                        }
+                    },
+                    onClick = {
+                        expanded = false
+                        onLanguageChange(language)
                     },
                 )
             }
@@ -826,11 +886,12 @@ private fun InterfaceStyleSelectionRow(
     onStyleChange: (RemoteInterfaceStyle) -> Unit,
 ) {
     var expanded by remember { mutableStateOf(false) }
+    val strings = LocalRemoteStrings.current
     val android12Requirement = android12RequirementDescription(Build.VERSION.SDK_INT)
     data class StyleOption(val style: RemoteInterfaceStyle, val label: String, val description: String?)
     val options = listOf(
-        StyleOption(RemoteInterfaceStyle.NATIVE, "原生", null),
-        StyleOption(RemoteInterfaceStyle.GLASS, "玻璃", android12Requirement),
+        StyleOption(RemoteInterfaceStyle.NATIVE, RemoteInterfaceStyle.NATIVE.localizedLabel(strings), null),
+        StyleOption(RemoteInterfaceStyle.GLASS, RemoteInterfaceStyle.GLASS.localizedLabel(strings), android12Requirement),
     )
     AppearanceValueRow(
         title = "风格",
@@ -850,7 +911,9 @@ private fun InterfaceStyleSelectionRow(
                         }
                     },
                     trailingIcon = {
-                        if (option.style == selectedStyle) Icon(Icons.Outlined.Check, contentDescription = "当前风格")
+                        if (option.style == selectedStyle) {
+                            Icon(Icons.Outlined.Check, contentDescription = strings.t("当前风格"))
+                        }
                     },
                     onClick = {
                         expanded = false
@@ -883,6 +946,7 @@ private fun GlassValueRow(
     val focusRequester = remember { FocusRequester() }
     val focusManager = LocalFocusManager.current
     val keyboardController = LocalSoftwareKeyboardController.current
+    val strings = LocalRemoteStrings.current
 
     fun finishEditing() {
         inputValue.text.toIntOrNull()?.takeIf { it in 0..100 }?.let {
@@ -942,7 +1006,12 @@ private fun GlassValueRow(
                     }.padding(start = 6.dp, top = 5.dp, bottom = 5.dp),
                 ) {
                     Text("${(previewValue * 100).toInt()}%", color = MaterialTheme.colorScheme.onSurfaceVariant, fontSize = 12.sp)
-                    Icon(Icons.Outlined.Edit, contentDescription = inputContentDescription, tint = MaterialTheme.colorScheme.onSurfaceVariant, modifier = Modifier.padding(start = 8.dp).size(17.dp))
+                    Icon(
+                        Icons.Outlined.Edit,
+                        contentDescription = strings.displayText(inputContentDescription),
+                        tint = MaterialTheme.colorScheme.onSurfaceVariant,
+                        modifier = Modifier.padding(start = 8.dp).size(17.dp),
+                    )
                 }
             }
         }
@@ -1038,13 +1107,19 @@ private fun SettingsDropdownArrow(
     onDismiss: () -> Unit,
     menuContent: @Composable ColumnScope.() -> Unit,
 ) {
+    val strings = LocalRemoteStrings.current
     val arrowRotation by animateFloatAsState(
         targetValue = if (expanded) 180f else 0f,
         animationSpec = tween(if (expanded) 180 else 120, easing = CubicBezierEasing(0.23f, 1f, 0.32f, 1f)),
         label = "settings_dropdown_arrow",
     )
     Box(contentAlignment = Alignment.Center) {
-        Icon(Icons.Outlined.ExpandMore, contentDescription = if (expanded) "收起选项" else "展开选项", tint = MaterialTheme.colorScheme.onSurfaceVariant, modifier = Modifier.size(19.dp).graphicsLayer { rotationZ = arrowRotation })
+        Icon(
+            Icons.Outlined.ExpandMore,
+            contentDescription = strings.t(if (expanded) "收起选项" else "展开选项"),
+            tint = MaterialTheme.colorScheme.onSurfaceVariant,
+            modifier = Modifier.size(19.dp).graphicsLayer { rotationZ = arrowRotation },
+        )
         SettingsPopupMenu(expanded, onDismiss, Modifier.align(Alignment.TopEnd), menuContent)
     }
 }
@@ -1312,13 +1387,19 @@ private fun GroupDivider(@Suppress("UNUSED_PARAMETER") horizontalPadding: Dp = 1
 
 @Composable
 private fun OverviewSettingRow(title: String, description: String, onClick: () -> Unit) {
+    val strings = LocalRemoteStrings.current
     Row(Modifier.fillMaxWidth().glassClickable(onClick = onClick).padding(horizontal = 14.dp, vertical = 10.dp), verticalAlignment = Alignment.CenterVertically) {
         Column(Modifier.weight(1f)) {
             Text(title, color = MaterialTheme.colorScheme.onSurface, fontSize = 14.sp, fontWeight = FontWeight.Medium, maxLines = 1, overflow = TextOverflow.Ellipsis)
             if (description.isNotBlank()) Text(description, color = MaterialTheme.colorScheme.onSurfaceVariant, fontSize = 12.sp, maxLines = 2, overflow = TextOverflow.Ellipsis)
         }
         Spacer(Modifier.width(8.dp))
-        Icon(Icons.Outlined.ChevronRight, contentDescription = "打开设置项", tint = MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.58f), modifier = Modifier.size(18.dp))
+        Icon(
+            Icons.Outlined.ChevronRight,
+            contentDescription = strings.t("打开设置项"),
+            tint = MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.58f),
+            modifier = Modifier.size(18.dp),
+        )
     }
 }
 

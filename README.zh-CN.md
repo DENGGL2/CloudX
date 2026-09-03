@@ -1,6 +1,6 @@
 # CloudX
 
-[English](README.md) | [简体中文](README.zh-CN.md)
+[中文主文档](README.md) | [English](README.md#english)
 
 `CloudX` 是一个面向 Codex 的独立第三方 Android 远程控制客户端。它通过
 一次性二维码与受支持的 Windows 桌面端配对，让你可以在 Android 设备上远程

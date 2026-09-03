@@ -15,7 +15,7 @@ import androidx.compose.material3.Button
 import androidx.compose.material3.ButtonDefaults
 import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.material3.MaterialTheme
-import androidx.compose.material3.Text
+import androidx.compose.material3.Text as MaterialText
 import androidx.compose.runtime.Composable
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
@@ -28,6 +28,8 @@ import com.denggl2.masonremote.ui.chat.masonGlassShadow
 import com.denggl2.masonremote.ui.theme.MasonAlertDialog
 import com.denggl2.masonremote.ui.theme.masonDialogConfirmButtonColor
 import com.denggl2.masonremote.ui.theme.masonDialogDismissButtonColors
+import com.denggl2.masonremote.ui.localizedText as Text
+import com.denggl2.masonremote.ui.LocalRemoteStrings
 
 @Composable
 internal fun PairingDisconnectDialog(
@@ -41,16 +43,17 @@ internal fun PairingDisconnectDialog(
     if (stage !in 1..2) return
 
     val isFinalConfirmation = stage == 2
-    val connectionName = state.connector?.displayName() ?: "当前连接"
+    val strings = LocalRemoteStrings.current
+    val connectionName = state.connector?.displayName()?.let(strings::displayText) ?: strings.t("当前连接")
     val body = if (isFinalConfirmation) {
-        "请确认断开连接"
+        strings.t("请确认断开连接")
     } else {
-        "当前连接方式为${connectionName}，是否断开？"
+        "Connection method: $connectionName. Disconnect?".let { if (strings.isEnglish) it else "当前连接方式为${connectionName}，是否断开？" }
     }
 
     MasonRemoteActionDialog(
         onDismissRequest = { if (!state.isDisconnecting) onDismiss() },
-        title = "信息确认",
+        title = strings.t("信息确认"),
         body = {
             Text(
                 text = body,
@@ -60,8 +63,8 @@ internal fun PairingDisconnectDialog(
                 textAlign = TextAlign.Center,
             )
         },
-        dismissLabel = "取消",
-        confirmLabel = "确认",
+        dismissLabel = strings.t("取消"),
+        confirmLabel = strings.t("确认"),
         confirmColor = MaterialTheme.colorScheme.primary,
         confirmContentColor = MaterialTheme.colorScheme.onPrimary,
         busy = state.isDisconnecting,

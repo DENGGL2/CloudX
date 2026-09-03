@@ -24,7 +24,7 @@ import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.compose.material3.Icon
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.ModalBottomSheet
-import androidx.compose.material3.Text
+import androidx.compose.material3.Text as MaterialText
 import androidx.compose.material3.rememberModalBottomSheetState
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
@@ -60,6 +60,9 @@ import com.denggl2.masonremote.ui.theme.MasonSheetShape
 import com.denggl2.masonremote.ui.theme.masonOverlayWindowInsets
 import com.denggl2.masonremote.ui.theme.masonSheetContainerColor
 import com.denggl2.masonremote.ui.theme.masonSheetSurface
+import com.denggl2.masonremote.ui.localizedText as Text
+import com.denggl2.masonremote.ui.LocalRemoteStrings
+import com.denggl2.masonremote.ui.localizedPairingError
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.launch
 
@@ -74,6 +77,7 @@ internal fun PairingSheet(
     onPaired: (PairedConnector) -> Unit,
 ) {
     val context = LocalContext.current
+    val strings = LocalRemoteStrings.current
     val scope = rememberCoroutineScope()
     val pairingStore = remember(context.applicationContext) { PairingStore(context.applicationContext) }
     val transport = remember(pairingStore, context.applicationContext) {
@@ -105,10 +109,12 @@ internal fun PairingSheet(
                 offer = debugOffer
                 step = PairingStep.CONFIRM
             } else if (debugOffer != null) {
-                errorMessage = "请扫描 ${requestedTransportMode?.displayName() ?: "对应方式"}二维码"
+                errorMessage = strings.localizedPairingError(
+                    "请扫描 ${requestedTransportMode?.displayName() ?: "对应方式"}二维码",
+                )
                 step = PairingStep.ERROR
             } else {
-                errorMessage = "测试二维码内容无效"
+                errorMessage = strings.t("测试二维码内容无效")
                 step = PairingStep.ERROR
             }
         }
@@ -157,23 +163,25 @@ internal fun PairingSheet(
             onRequestPermission = { permissionLauncher.launch(Manifest.permission.CAMERA) },
             onOfferFound = { scannedOffer ->
                 if (scannedOffer.bootstrap.expiresAt <= System.currentTimeMillis()) {
-                    errorMessage = "二维码已过期，请让电脑端重新生成"
+                    errorMessage = strings.localizedPairingError("二维码已过期，请让电脑端重新生成")
                     step = PairingStep.ERROR
                 } else if (isExpectedMode(scannedOffer)) {
                     offer = scannedOffer
                     step = PairingStep.CONFIRM
                 } else {
-                    errorMessage = "请扫描 ${requestedTransportMode?.displayName() ?: "对应方式"}二维码"
+                    errorMessage = strings.localizedPairingError(
+                        "请扫描 ${requestedTransportMode?.displayName() ?: "对应方式"}二维码",
+                    )
                     step = PairingStep.ERROR
                 }
             },
             onConfirm = {
                 val currentOffer = offer
                 if (currentOffer == null) {
-                    errorMessage = "二维码信息无效"
+                    errorMessage = strings.t("二维码信息无效")
                     step = PairingStep.ERROR
                 } else if (currentOffer.bootstrap.expiresAt <= System.currentTimeMillis()) {
-                    errorMessage = "二维码已过期，请让电脑端重新生成"
+                    errorMessage = strings.localizedPairingError("二维码已过期，请让电脑端重新生成")
                     step = PairingStep.ERROR
                 } else {
                     step = PairingStep.CONNECTING
@@ -185,7 +193,7 @@ internal fun PairingSheet(
                                 step = PairingStep.DONE
                             }
                             is PairingResult.Failed -> {
-                                errorMessage = result.message
+                                errorMessage = strings.localizedPairingError(result.message)
                                 step = PairingStep.ERROR
                             }
                         }
@@ -219,6 +227,7 @@ private fun PairingSheetContent(
     onEnterConversation: () -> Unit,
     onRetry: () -> Unit,
 ) {
+    val strings = LocalRemoteStrings.current
     Box(
         modifier = Modifier
             .fillMaxWidth()
@@ -239,11 +248,11 @@ private fun PairingSheetContent(
         )
         Text(
             text = when (step) {
-                PairingStep.SCAN -> "扫码配对"
-                PairingStep.CONFIRM -> "确认配对"
-                PairingStep.CONNECTING -> "正在配对"
-                PairingStep.DONE -> "已完成配对"
-                PairingStep.ERROR -> "配对失败"
+                PairingStep.SCAN -> strings.t("扫码配对")
+                PairingStep.CONFIRM -> strings.t("确认配对")
+                PairingStep.CONNECTING -> strings.t("正在配对")
+                PairingStep.DONE -> strings.t("已完成配对")
+                PairingStep.ERROR -> strings.t("配对失败")
             },
             color = PairingSheetColors.Text,
             fontSize = 20.sp,
@@ -257,7 +266,7 @@ private fun PairingSheetContent(
         when (step) {
             PairingStep.SCAN -> {
                 Text(
-                    text = "扫描电脑端项目生成的二维码",
+                    text = strings.t("扫描电脑端项目生成的二维码"),
                     color = PairingSheetColors.Secondary,
                     fontSize = 14.sp,
                     lineHeight = 17.sp,
@@ -295,14 +304,14 @@ private fun PairingSheetContent(
                                     .width(160.dp)
                                     .height(44.dp),
                                 contentColor = PairingSheetColors.Button,
-                            ) { Text("允许相机权限") }
+                            ) { Text(strings.t("允许相机权限")) }
                         }
                     }
                 }
             }
             PairingStep.CONFIRM -> {
                 Text(
-                    text = offer?.deviceName ?: "电脑",
+                    text = offer?.deviceName ?: strings.t("电脑"),
                     color = PairingSheetColors.Text,
                     fontSize = 20.sp,
                     lineHeight = 24.sp,
@@ -313,12 +322,12 @@ private fun PairingSheetContent(
                 )
                 Text(
                     text = buildString {
-                        append("服务器\n")
+                        append(strings.t("服务器")); append("\n")
                         append(offer?.serverUrl ?: "")
-                        append("\n设备指纹\n")
+                        append("\n"); append(strings.t("设备指纹")); append("\n")
                         append(offer?.fingerprint ?: "")
-                        append("\n二维码有效期\n")
-                        append(formatPairingExpiry(offer?.bootstrap?.expiresAt, nowMillis))
+                        append("\n"); append(strings.t("二维码有效期")); append("\n")
+                        append(formatPairingExpiry(offer?.bootstrap?.expiresAt, nowMillis, strings.isEnglish))
                     },
                     color = PairingSheetColors.Secondary,
                     fontSize = 14.sp,
@@ -335,7 +344,7 @@ private fun PairingSheetContent(
                         .offset(y = 288.dp),
                     onCancel = onBackToScan,
                     onConfirm = onConfirm,
-                    confirmLabel = "确认并配对",
+                    confirmLabel = strings.t("确认并配对"),
                 )
             }
             PairingStep.CONNECTING -> {
@@ -345,7 +354,7 @@ private fun PairingSheetContent(
                     verticalArrangement = Arrangement.spacedBy(16.dp),
                 ) {
                     CircularProgressIndicator(color = PairingSheetColors.Text)
-                    Text("正在建立安全连接…", color = PairingSheetColors.Secondary, fontSize = 14.sp)
+                    Text(strings.t("正在建立安全连接…"), color = PairingSheetColors.Secondary, fontSize = 14.sp)
                 }
             }
             PairingStep.DONE -> {
@@ -358,7 +367,7 @@ private fun PairingSheetContent(
                     darkTheme = MaterialTheme.colorScheme.background.luminance() < 0.5f,
                 )
                 Text(
-                    text = "已连接到电脑端",
+                    text = strings.t("已连接到电脑端"),
                     color = PairingSheetColors.Text,
                     fontSize = 20.sp,
                     lineHeight = 24.sp,
@@ -384,7 +393,7 @@ private fun PairingSheetContent(
                         .width(232.dp)
                         .height(44.dp),
                     contentColor = PairingSheetColors.Button,
-                ) { Text("进入对话", fontSize = 14.sp, fontWeight = FontWeight.Medium) }
+                ) { Text(strings.t("进入对话"), fontSize = 14.sp, fontWeight = FontWeight.Medium) }
             }
             PairingStep.ERROR -> {
                 Column(
@@ -403,7 +412,7 @@ private fun PairingSheetContent(
                             .width(160.dp)
                             .height(44.dp),
                         contentColor = PairingSheetColors.Button,
-                    ) { Text("重新扫码") }
+                    ) { Text(strings.t("重新扫码")) }
                 }
             }
         }
@@ -427,7 +436,7 @@ private fun PairingButtons(
             modifier = Modifier
                 .size(width = 110.dp, height = 44.dp),
             contentColor = MaterialTheme.colorScheme.onSurface,
-        ) { Text("返回", fontSize = 14.sp) }
+        ) { Text(LocalRemoteStrings.current.t("返回"), fontSize = 14.sp) }
         ChatGlassControl(
             onClick = onConfirm,
             modifier = Modifier
@@ -437,14 +446,18 @@ private fun PairingButtons(
     }
 }
 
-private fun formatPairingExpiry(expiresAt: Long?, nowMillis: Long): String {
-    if (expiresAt == null) return "未知"
+private fun formatPairingExpiry(expiresAt: Long?, nowMillis: Long, english: Boolean = false): String {
+    if (expiresAt == null) return if (english) "Unknown" else "未知"
     val remainingSeconds = ((expiresAt - nowMillis) / 1_000L).coerceAtLeast(0L)
-    if (remainingSeconds == 0L) return "已过期，请重新生成"
+    if (remainingSeconds == 0L) return if (english) "Expired; generate a new code" else "已过期，请重新生成"
     val minutes = remainingSeconds / 60
     val seconds = remainingSeconds % 60
     val clock = AndroidDateFormat.format("HH:mm:ss", expiresAt)
-    return "有效至 $clock（剩余 ${minutes}分${seconds.toString().padStart(2, '0')}秒）"
+    return if (english) {
+        "Valid until $clock (${minutes}m ${seconds.toString().padStart(2, '0')}s remaining)"
+    } else {
+        "有效至 $clock（剩余 ${minutes}分${seconds.toString().padStart(2, '0')}秒）"
+    }
 }
 
 private object PairingSheetColors {

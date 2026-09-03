@@ -92,7 +92,7 @@ import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.ModalBottomSheet
-import androidx.compose.material3.Text
+import androidx.compose.material3.Text as MaterialText
 import androidx.compose.material3.TextButton
 import androidx.compose.material3.rememberModalBottomSheetState
 import androidx.compose.runtime.Composable
@@ -179,6 +179,10 @@ import com.denggl2.masonremote.transport.RemoteConnectorClient
 import com.denggl2.masonremote.transport.displayName
 import com.denggl2.masonremote.transport.isCloudXVisible
 import com.denggl2.masonremote.ui.settings.RemoteMessageSendMode
+import com.denggl2.masonremote.ui.localizedText as Text
+import com.denggl2.masonremote.ui.LocalRemoteStrings
+import com.denggl2.masonremote.ui.RemoteStrings
+import com.denggl2.masonremote.ui.localizedDuration
 import java.io.ByteArrayOutputStream
 import java.io.File
 import java.nio.ByteBuffer
@@ -347,6 +351,7 @@ internal fun RemoteConversationDetailScreen(
         DiagnosticLog.record("DETAIL_SCREEN_OPEN threadId=$threadId")
     }
     val context = LocalContext.current
+    val strings = LocalRemoteStrings.current
     val focusManager = LocalFocusManager.current
     val keyboardController = LocalSoftwareKeyboardController.current
     val remoteClient = remember(pairedConnector) {
@@ -354,7 +359,7 @@ internal fun RemoteConversationDetailScreen(
             RemoteConnectorClient(it, AndroidDeviceIdentityStore(), context.applicationContext)
         }
     }
-    val agentLabel = pairedConnector?.agentKind?.displayName() ?: "远程 Agent"
+    val agentLabel = pairedConnector?.agentKind?.displayName()?.let(strings::displayText) ?: strings.t("远程 Agent")
     var remoteDetail by remember(threadId) { mutableStateOf<ConnectorConversationDetailPayload?>(null) }
     var remoteError by remember(threadId) { mutableStateOf<String?>(null) }
     var loadingAttachmentId by remember(threadId) { mutableStateOf<String?>(null) }
@@ -391,7 +396,7 @@ internal fun RemoteConversationDetailScreen(
             }.onFailure {
                 DiagnosticLog.recordException("DETAIL_READ_FAILURE threadId=$threadId", it)
                 if (remoteDetail == null) {
-                    remoteError = it.message ?: "无法读取电脑端对话"
+                    remoteError = strings.displayText(it.message ?: strings.t("无法读取电脑端会话"))
                 }
             }
             delay(nextPollDelayMillis)
@@ -408,7 +413,7 @@ internal fun RemoteConversationDetailScreen(
             optionsError = null
         }.onFailure {
             DiagnosticLog.recordException("COMPOSER_OPTIONS_FAILURE threadId=$threadId", it)
-            optionsError = it.message ?: "无法读取 $agentLabel 配置"
+            optionsError = it.message ?: strings.text("无法读取 $agentLabel 配置", "Unable to read $agentLabel options")
         }
         optionsLoading = false
     }
@@ -587,13 +592,16 @@ internal fun RemoteConversationDetailScreen(
 
     fun addAttachment(kind: ConnectorAttachmentKind, uri: Uri) {
         if (attachments.size >= MaxPendingDetailAttachments) {
-            sendError = "每次最多添加 $MaxPendingDetailAttachments 个附件"
+            sendError = strings.text(
+                "每次最多添加 $MaxPendingDetailAttachments 个附件",
+                "You can add up to $MaxPendingDetailAttachments attachments at a time",
+            )
             return
         }
         if (attachments.any { it.uri == uri }) return
         val size = queryAttachmentSize(context, uri)
         if (size != null && size > MaxDetailAttachmentBytes) {
-            sendError = "单个附件不能超过 20 MB"
+            sendError = strings.t("单个附件不能超过 20 MB")
             return
         }
         attachments = attachments + PendingDetailAttachment(
@@ -651,7 +659,7 @@ internal fun RemoteConversationDetailScreen(
         ) return
         val pendingAttachments = attachments
         val pendingSkill = selectedSkill
-        val requestText = text.ifBlank { "已添加内容" }
+        val requestText = text.ifBlank { strings.t("已添加内容") }
         val effectiveDeliveryMode = requestedDeliveryMode
         localSendingStartedAt = System.currentTimeMillis()
         isSending = true
@@ -667,7 +675,7 @@ internal fun RemoteConversationDetailScreen(
                 messages = messages + DetailMessage(
                     id = "assistant-${messages.size}",
                     isUser = false,
-                    text = "已收到这条消息。电脑端返回内容后，会在这里显示完整结果。",
+                    text = strings.t("已收到这条消息。电脑端返回内容后，会在这里显示完整结果。"),
                 )
                 onDraftChange("")
                 attachments = emptyList()
@@ -709,7 +717,7 @@ internal fun RemoteConversationDetailScreen(
                 runCatching {
                     remoteClient.readConversation(pairedConnector.deviceId, threadId)
                 }.onSuccess { remoteDetail = it }
-                    .onFailure { remoteError = it.message ?: "消息已发送，但无法刷新对话" }
+                    .onFailure { remoteError = it.message ?: strings.t("消息已发送，但无法刷新对话") }
             }.onFailure {
                 sendError = remoteSendErrorMessage(it)
             }
@@ -722,7 +730,7 @@ internal fun RemoteConversationDetailScreen(
         val client = remoteClient
         val connector = pairedConnector
         if (client == null || connector == null || threadId.startsWith("demo-")) {
-            Toast.makeText(context, "当前对话没有可读取的电脑端图片", Toast.LENGTH_SHORT).show()
+            Toast.makeText(context, strings.t("当前对话没有可读取的电脑端图片"), Toast.LENGTH_SHORT).show()
             return
         }
         loadingAttachmentId = attachment.attachmentId
@@ -743,7 +751,7 @@ internal fun RemoteConversationDetailScreen(
             }.onFailure { error ->
                 Toast.makeText(
                     context,
-                    "图片读取失败：${error.message ?: "电脑端附件不可用"}",
+                    strings.displayText("图片读取失败：${error.message ?: strings.t("电脑端附件不可用")}"),
                     Toast.LENGTH_SHORT,
                 ).show()
             }
@@ -767,7 +775,7 @@ internal fun RemoteConversationDetailScreen(
         val client = remoteClient
         val connector = pairedConnector
         if (client == null || connector == null || threadId.startsWith("demo-")) {
-            fileDownloadError = "当前对话没有可读取的电脑端文件"
+            fileDownloadError = strings.t("当前对话没有可读取的电脑端文件")
             return
         }
         scope.launch {
@@ -782,9 +790,9 @@ internal fun RemoteConversationDetailScreen(
                 saveRemoteConversationFile(context, attachment.name, attachment.mimeType, downloaded)
             }.onSuccess { path ->
                 fileAttachment = null
-                Toast.makeText(context, "已下载到 $path", Toast.LENGTH_LONG).show()
+                Toast.makeText(context, strings.displayText("已下载到 $path"), Toast.LENGTH_LONG).show()
             }.onFailure { error ->
-                fileDownloadError = error.message ?: "文件下载失败"
+                fileDownloadError = error.message ?: strings.t("文件下载失败")
             }
             fileDownloadBusy = false
         }
@@ -813,7 +821,7 @@ internal fun RemoteConversationDetailScreen(
                 runCatching { client.readConversation(connector.deviceId, threadId) }
                     .onSuccess { remoteDetail = it }
             }.onFailure { error ->
-                approvalError = error.message ?: "无法提交确认结果"
+                approvalError = error.message ?: strings.t("无法提交确认结果")
             }
             approvalBusy = false
         }
@@ -834,7 +842,7 @@ internal fun RemoteConversationDetailScreen(
                 runCatching { client.readConversation(connector.deviceId, threadId) }
                     .onSuccess { remoteDetail = it }
             }.onFailure { error ->
-                sendError = error.message ?: "无法停止电脑端任务"
+                sendError = error.message ?: strings.t("无法停止电脑端任务")
             }
             isInterrupting = false
         }
@@ -924,8 +932,8 @@ internal fun RemoteConversationDetailScreen(
                     }
                     sendError?.let { error ->
                         item(key = "send-error") {
-                            Text(
-                                text = "发送失败：$error",
+            Text(
+                text = strings.displayText("发送失败：$error"),
                                 color = MaterialTheme.colorScheme.error,
                                 fontSize = 13.sp,
                                 modifier = Modifier.padding(horizontal = 2.dp),
@@ -982,7 +990,7 @@ internal fun RemoteConversationDetailScreen(
                         color = MaterialTheme.colorScheme.onBackground,
                     )
                     Text(
-                        text = "加载中",
+                        text = strings.t("加载中"),
                         color = MaterialTheme.colorScheme.onBackground,
                         fontSize = 16.sp,
                         fontWeight = FontWeight.Medium,
@@ -1051,7 +1059,7 @@ internal fun RemoteConversationDetailScreen(
                 RemoteImagePreviewDialog(
                     image = image,
                     onDismiss = { previewImage = null },
-                    onShare = { shareRemoteImage(context, image) },
+                    onShare = { shareRemoteImage(context, image, strings) },
                 )
             }
             fileAttachment?.let { attachment ->
@@ -1178,6 +1186,7 @@ private fun DetailTranscriptActivityRow(
     activity: DetailActivity,
     onOpenCommand: (DetailActivity) -> Unit,
 ) {
+    val strings = LocalRemoteStrings.current
     val canOpenCommand = activity.kind == DetailActivityKind.COMMAND &&
         (!activity.command.isNullOrBlank() || !activity.output.isNullOrBlank())
     val hasDetails = activity.text.isNotBlank() || canOpenCommand
@@ -1254,7 +1263,7 @@ private fun DetailTranscriptActivityRow(
                     activity.durationMillis()?.let { durationMillis ->
                         Spacer(Modifier.width(7.dp))
                         Text(
-                            formatRemoteDuration(durationMillis),
+                            strings.localizedDuration(durationMillis),
                             color = MaterialTheme.colorScheme.onSurfaceVariant,
                             fontSize = 11.sp,
                         )
@@ -1264,7 +1273,17 @@ private fun DetailTranscriptActivityRow(
             if (hasDetails) {
                 Icon(
                     imageVector = Icons.Outlined.KeyboardArrowDown,
-                    contentDescription = if (expanded) "收起${detailActivityDisplayTitle(activity)}" else "展开${detailActivityDisplayTitle(activity)}",
+                    contentDescription = if (expanded) {
+                        strings.text(
+                            "收起${detailActivityDisplayTitle(activity)}",
+                            "Collapse ${strings.displayText(detailActivityDisplayTitle(activity))}",
+                        )
+                    } else {
+                        strings.text(
+                            "展开${detailActivityDisplayTitle(activity)}",
+                            "Expand ${strings.displayText(detailActivityDisplayTitle(activity))}",
+                        )
+                    },
                     tint = MaterialTheme.colorScheme.onSurfaceVariant,
                     modifier = Modifier
                         .size(18.dp)
@@ -1500,6 +1519,7 @@ private fun DetailTranscriptActivityGroup(
     durationMillis: Long?,
     onOpenCommand: (DetailActivity) -> Unit,
 ) {
+    val strings = LocalRemoteStrings.current
     val hasDetails = activities.any {
         isUsefulDetailActivityText(it.text) ||
             !it.command.isNullOrBlank() ||
@@ -1597,7 +1617,7 @@ private fun DetailTranscriptActivityGroup(
             ) {
                 if (status == DetailActivityStatus.RUNNING) {
                     RemoteShimmerStatusText(
-                        text = "进行中 · ${formatRemoteDuration(runningDurationMillis ?: 0L)}",
+                        text = "${strings.t("进行中")} · ${strings.localizedDuration(runningDurationMillis ?: 0L)}",
                         baseColor = MaterialTheme.colorScheme.onSurface,
                         fontSize = runningStatusTextStyle.fontSize,
                         lineHeight = runningStatusTextStyle.lineHeight,
@@ -1619,7 +1639,7 @@ private fun DetailTranscriptActivityGroup(
                     displayedDurationMillis?.let { duration ->
                         Spacer(Modifier.width(7.dp))
                         Text(
-                            "耗时${formatRemoteDuration(duration)}",
+                            "${strings.t("耗时")}${strings.localizedDuration(duration)}",
                             color = statusColor,
                             fontSize = 11.sp,
                             maxLines = 1,
@@ -1628,8 +1648,12 @@ private fun DetailTranscriptActivityGroup(
                     }
                     if (!expanded) {
                         Spacer(Modifier.weight(1f))
+                        val commandCount = activities.count { it.kind == DetailActivityKind.COMMAND }
                         Text(
-                            "已执行${activities.count { it.kind == DetailActivityKind.COMMAND }}条",
+                            strings.text(
+                                "已执行${commandCount}条",
+                                "Executed $commandCount ${if (commandCount == 1) "item" else "items"}",
+                            ),
                             color = MaterialTheme.colorScheme.onSurfaceVariant,
                             fontSize = 12.sp,
                             maxLines = 1,
@@ -1641,7 +1665,10 @@ private fun DetailTranscriptActivityGroup(
             if (hasDetails) {
                 Icon(
                     imageVector = Icons.Outlined.KeyboardArrowDown,
-                    contentDescription = if (expanded) "收起执行记录" else "展开执行记录",
+                    contentDescription = strings.text(
+                        if (expanded) "收起执行详情" else "展开执行详情",
+                        if (expanded) "Collapse execution details" else "Expand execution details",
+                    ),
                     tint = MaterialTheme.colorScheme.onSurfaceVariant,
                     modifier = Modifier
                         .size(18.dp)
@@ -1770,9 +1797,10 @@ private fun DetailCommandOutputLink(
     fontSize: TextUnit = 13.sp,
     lineHeight: TextUnit = 19.sp,
 ) {
+    val strings = LocalRemoteStrings.current
     val output = activity.commandOutputPreview() ?: return
     DetailDashedLink(
-        text = output,
+        text = strings.content(output),
         color = MaterialTheme.colorScheme.onSurface,
         fontSize = fontSize,
         lineHeight = lineHeight,
@@ -1820,6 +1848,7 @@ private fun DetailDashedLink(
 @Composable
 private fun DetailCommandSheet(activity: DetailActivity, onDismiss: () -> Unit) {
     val context = LocalContext.current
+    val strings = LocalRemoteStrings.current
     val sheetState = rememberModalBottomSheetState(skipPartiallyExpanded = true)
     ModalBottomSheet(
         onDismissRequest = onDismiss,
@@ -1846,23 +1875,23 @@ private fun DetailCommandSheet(activity: DetailActivity, onDismiss: () -> Unit) 
                     .clip(RoundedCornerShape(2.dp))
                     .background(MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.55f)),
             )
-            Text("命令详情", color = MaterialTheme.colorScheme.onSurface, fontSize = 18.sp, fontWeight = FontWeight.SemiBold)
+            Text(strings.t("命令详情"), color = MaterialTheme.colorScheme.onSurface, fontSize = 18.sp, fontWeight = FontWeight.SemiBold)
             activity.command?.takeIf(String::isNotBlank)?.let { command ->
                 DetailCommandSheetBlock(
-                    title = "命令",
+                    title = strings.t("命令"),
                     value = command,
                     onCopy = {
-                        copyRemoteCommand(context, "命令", command)
+                        copyRemoteCommand(context, strings.t("命令"), command, strings)
                     },
                 )
             }
             activity.output?.takeIf(String::isNotBlank)?.let { output ->
                 DetailCommandSheetBlock(
-                    title = "输出",
+                    title = strings.t("输出"),
                     value = output,
                     scroll = true,
                     onCopy = {
-                        copyRemoteCommand(context, "输出", output)
+                        copyRemoteCommand(context, strings.t("输出"), output, strings)
                     },
                 )
             }
@@ -1887,7 +1916,14 @@ private fun DetailCommandSheetBlock(
                 cornerRadius = 15.dp,
                 contentColor = MaterialTheme.colorScheme.onSurfaceVariant,
             ) {
-                Icon(Icons.Outlined.ContentCopy, contentDescription = "复制$title", modifier = Modifier.size(17.dp))
+                Icon(
+                    Icons.Outlined.ContentCopy,
+                    contentDescription = LocalRemoteStrings.current.text(
+                        "复制${LocalRemoteStrings.current.displayText(title)}",
+                        "Copy ${LocalRemoteStrings.current.displayText(title)}",
+                    ),
+                    modifier = Modifier.size(17.dp),
+                )
             }
         }
         val valueModifier = Modifier
@@ -1918,10 +1954,10 @@ private fun DetailCommandSheetBlock(
     }
 }
 
-private fun copyRemoteCommand(context: Context, label: String, value: String) {
+private fun copyRemoteCommand(context: Context, label: String, value: String, strings: RemoteStrings) {
     val clipboard = context.getSystemService(ClipboardManager::class.java) ?: return
     clipboard.setPrimaryClip(ClipData.newPlainText(label, value))
-    Toast.makeText(context, "已复制$label", Toast.LENGTH_SHORT).show()
+    Toast.makeText(context, "${strings.t("已复制")}$label", Toast.LENGTH_SHORT).show()
 }
 
 @Composable
@@ -1989,7 +2025,7 @@ private fun RemoteConversationImageThumbnail(
             )
             is RemoteThumbnailState.Failed -> Icon(
                 Icons.Outlined.Image,
-                contentDescription = "图片预览失败",
+                contentDescription = LocalRemoteStrings.current.t("图片预览失败"),
                 tint = MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.72f),
                 modifier = Modifier.size(22.dp),
             )
@@ -2026,6 +2062,7 @@ private fun RemoteFileAttachmentSheet(
     onDismiss: () -> Unit,
     onDownload: () -> Unit,
 ) {
+    val strings = LocalRemoteStrings.current
     val sheetState = rememberModalBottomSheetState(skipPartiallyExpanded = true)
     ModalBottomSheet(
         onDismissRequest = onDismiss,
@@ -2069,7 +2106,7 @@ private fun RemoteFileAttachmentSheet(
                 )
                 Spacer(Modifier.width(8.dp))
                 Text(
-                    text = "文件预览",
+                    text = strings.t("文件预览"),
                     color = MaterialTheme.colorScheme.onSurface,
                     fontSize = 18.sp,
                     fontWeight = FontWeight.SemiBold,
@@ -2085,7 +2122,7 @@ private fun RemoteFileAttachmentSheet(
                 ) {
                     Icon(
                         imageVector = Icons.Outlined.Close,
-                        contentDescription = "关闭文件预览",
+                        contentDescription = strings.t("关闭文件预览"),
                         modifier = Modifier.size(18.dp),
                     )
                 }
@@ -2099,7 +2136,7 @@ private fun RemoteFileAttachmentSheet(
                 overflow = TextOverflow.Ellipsis,
             )
             Text(
-                text = "电脑文件 · ${formatRemoteAttachmentSize(attachment.sizeBytes)}",
+                text = strings.displayText("电脑文件 · ${formatRemoteAttachmentSize(attachment.sizeBytes)}"),
                 color = MaterialTheme.colorScheme.onSurfaceVariant,
                 fontSize = 12.sp,
                 lineHeight = 16.sp,
@@ -2123,13 +2160,13 @@ private fun RemoteFileAttachmentSheet(
                             color = MaterialTheme.colorScheme.onSurfaceVariant,
                         )
                         Text(
-                            text = "正在读取文件",
+                            text = strings.t("正在读取文件"),
                             color = MaterialTheme.colorScheme.onSurfaceVariant,
                             fontSize = 13.sp,
                         )
                     }
                     RemoteFilePreviewState.Unsupported -> Text(
-                        text = "无法预览",
+                        text = strings.t("无法预览"),
                         color = MaterialTheme.colorScheme.onSurfaceVariant,
                         fontSize = 14.sp,
                     )
@@ -2144,7 +2181,7 @@ private fun RemoteFileAttachmentSheet(
                                 .padding(12.dp),
                         ) {
                             Text(
-                                text = previewState.content.ifEmpty { "（空文件）" },
+                                text = previewState.content.ifEmpty { strings.t("（空文件）") },
                                 color = MaterialTheme.colorScheme.onSurface,
                                 fontFamily = androidx.compose.ui.text.font.FontFamily.Monospace,
                                 fontSize = 12.sp,
@@ -2193,7 +2230,7 @@ private fun RemoteFileAttachmentSheet(
                     }
                     Spacer(Modifier.width(7.dp))
                     Text(
-                        text = if (downloadBusy) "下载中" else "下载",
+                        text = strings.t(if (downloadBusy) "下载中" else "下载"),
                         fontSize = 14.sp,
                         fontWeight = FontWeight.Medium,
                     )
@@ -2235,6 +2272,7 @@ private fun DetailComposer(
     onPermissionChange: (String) -> Unit,
     modifier: Modifier = Modifier,
 ) {
+    val strings = LocalRemoteStrings.current
     var addMenuExpanded by remember { mutableStateOf(false) }
     var skillMenuExpanded by remember { mutableStateOf(false) }
     val inputFocusRequester = remember { FocusRequester() }
@@ -2361,7 +2399,7 @@ private fun DetailComposer(
                         ) {
                             Icon(
                                 Icons.Outlined.Add,
-                                contentDescription = "添加",
+                                contentDescription = strings.t("添加"),
                                 tint = MaterialTheme.colorScheme.onSurfaceVariant,
                             )
                         }
@@ -2443,7 +2481,9 @@ private fun DetailComposer(
                             Box(Modifier.fillMaxWidth()) {
                                 if (draft.isBlank()) {
                                     Text(
-                                        text = if (running) "当前任务进行中，可插入或排队" else "向 $agentLabel 发送消息",
+                                        text = strings.displayText(
+                                            if (running) "当前任务进行中，可插入或排队" else "向 $agentLabel 发送消息",
+                                        ),
                                         color = MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.76f),
                                         fontSize = 14.sp,
                                         maxLines = 1,
@@ -2468,7 +2508,7 @@ private fun DetailComposer(
                     ) {
                         Icon(
                             imageVector = if (showStop) Icons.Outlined.Stop else Icons.Outlined.ArrowUpward,
-                            contentDescription = if (showStop) "停止" else "发送",
+                            contentDescription = strings.t(if (showStop) "停止" else "发送"),
                             tint = composerActionContent,
                         )
                     }
@@ -2521,6 +2561,7 @@ private fun DetailContextChip(
     label: String,
     onRemove: () -> Unit,
 ) {
+    val strings = LocalRemoteStrings.current
     val shape = RoundedCornerShape(9.dp)
     Row(
         modifier = Modifier
@@ -2551,7 +2592,7 @@ private fun DetailContextChip(
         ) {
             Icon(
                 Icons.Outlined.Close,
-                contentDescription = "移除",
+                contentDescription = strings.t("移除"),
                 tint = MaterialTheme.colorScheme.onSurfaceVariant,
                 modifier = Modifier.size(12.dp),
             )
@@ -2598,6 +2639,7 @@ private fun DetailSelectorPill(
     selectedId: String?,
     onSelect: (String) -> Unit,
 ) {
+    val strings = LocalRemoteStrings.current
     var expanded by remember { mutableStateOf(false) }
     val arrowRotation by animateFloatAsState(
         targetValue = if (expanded) 180f else 0f,
@@ -2629,7 +2671,7 @@ private fun DetailSelectorPill(
                 Spacer(Modifier.width(2.dp))
                 Icon(
                     imageVector = Icons.Outlined.KeyboardArrowDown,
-                    contentDescription = label,
+                    contentDescription = strings.displayText(label),
                     tint = MaterialTheme.colorScheme.onSurfaceVariant,
                     modifier = Modifier.size(17.dp).rotate(arrowRotation),
                 )
@@ -2672,7 +2714,11 @@ private fun DetailSelectorPill(
                             modifier = Modifier.weight(1f),
                         )
                         if (item.id == selectedId) {
-                            Icon(Icons.Outlined.Check, contentDescription = "当前选项", modifier = Modifier.size(16.dp))
+                            Icon(
+                                Icons.Outlined.Check,
+                                contentDescription = strings.t("当前选项"),
+                                modifier = Modifier.size(16.dp),
+                            )
                         }
                     }
                 }
@@ -2729,6 +2775,7 @@ private fun PermissionApprovalFloatingBar(
     error: String?,
     onResolve: (String) -> Unit,
 ) {
+    val strings = LocalRemoteStrings.current
     val barShape = RoundedCornerShape(18.dp)
     RemoteFloatingSurface(
         shape = barShape,
@@ -2746,8 +2793,10 @@ private fun PermissionApprovalFloatingBar(
             verticalAlignment = Alignment.CenterVertically,
         ) {
             Text(
-                text = error?.takeIf(String::isNotBlank)
-                    ?: approval.title.ifBlank { "权限确认" },
+                text = strings.displayText(
+                    error?.takeIf(String::isNotBlank)
+                        ?: approval.title.ifBlank { "权限确认" },
+                ),
                 color = if (error.isNullOrBlank()) {
                     MaterialTheme.colorScheme.onSurface
                 } else {
@@ -2763,9 +2812,9 @@ private fun PermissionApprovalFloatingBar(
                 enabled = !busy,
                 onClick = { onResolve("decline") },
                 modifier = Modifier.height(36.dp),
-            ) { Text("拒绝", fontSize = 13.sp) }
+            ) { Text(strings.t("拒绝"), fontSize = 13.sp) }
             MasonBlackConfirmButton(
-                label = "允许",
+                label = strings.t("允许"),
                 enabled = !busy,
                 busy = busy,
                 onClick = { onResolve("accept") },
@@ -2780,6 +2829,7 @@ private fun DetailScrollToBottomButton(
     onClick: () -> Unit,
     modifier: Modifier = Modifier,
 ) {
+    val strings = LocalRemoteStrings.current
     RemoteFloatingSurface(
         shape = CircleShape,
         cornerRadius = 24.dp,
@@ -2791,7 +2841,7 @@ private fun DetailScrollToBottomButton(
         ) {
             Icon(
                 imageVector = Icons.Outlined.KeyboardArrowDown,
-                contentDescription = "回到最新消息",
+                contentDescription = strings.t("回到最新消息"),
                 tint = MaterialTheme.colorScheme.onBackground,
                 modifier = Modifier.size(24.dp),
             )

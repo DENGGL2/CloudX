@@ -14,7 +14,7 @@ import androidx.compose.material3.Button
 import androidx.compose.material3.ButtonDefaults
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.OutlinedButton
-import androidx.compose.material3.Text
+import androidx.compose.material3.Text as MaterialText
 import androidx.compose.runtime.Composable
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
@@ -24,6 +24,7 @@ import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
+import com.denggl2.masonremote.ui.localizedText as Text
 
 @Composable
 internal fun DisconnectedScreen(
@@ -31,6 +32,7 @@ internal fun DisconnectedScreen(
     onRepair: () -> Unit,
     errorCode: String = "错误码XXXXXXXXXXXXXXXXXXX",
 ) {
+    val strings = LocalRemoteStrings.current
     Box(
         modifier = Modifier
             .fillMaxSize()
@@ -50,7 +52,7 @@ internal fun DisconnectedScreen(
                 darkTheme = MaterialTheme.colorScheme.background.luminance() < 0.5f,
             )
             Text(
-                text = "已断开连接，请重试\n$errorCode",
+                text = if (strings.isEnglish) "Connection lost. Please retry\n$errorCode" else "已断开连接，请重试\n$errorCode",
                 color = androidx.compose.material3.MaterialTheme.colorScheme.onSurfaceVariant,
                 fontSize = 14.sp,
                 lineHeight = 18.sp,
@@ -74,7 +76,7 @@ internal fun DisconnectedScreen(
                     contentColor = androidx.compose.material3.MaterialTheme.colorScheme.onSurface,
                 ),
             ) {
-                Text("重新配对", fontSize = 14.sp, fontWeight = FontWeight.Medium)
+                Text(strings.t("重新配对"), fontSize = 14.sp, fontWeight = FontWeight.Medium)
             }
             Button(
                 onClick = onRetry,
@@ -87,7 +89,7 @@ internal fun DisconnectedScreen(
                     contentColor = androidx.compose.material3.MaterialTheme.colorScheme.onPrimary,
                 ),
             ) {
-                Text("重试", fontSize = 14.sp, fontWeight = FontWeight.Medium)
+                Text(strings.t("重试"), fontSize = 14.sp, fontWeight = FontWeight.Medium)
             }
         }
     }

@@ -58,7 +58,7 @@ import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.ModalBottomSheet
-import androidx.compose.material3.Text
+import androidx.compose.material3.Text as MaterialText
 import androidx.compose.material3.TextButton
 import androidx.compose.material3.pulltorefresh.PullToRefreshBox
 import androidx.compose.material3.pulltorefresh.rememberPullToRefreshState
@@ -126,6 +126,8 @@ import com.denggl2.masonremote.ui.theme.masonOverlayWindowInsets
 import com.denggl2.masonremote.ui.theme.masonSheetContainerColor
 import com.denggl2.masonremote.ui.theme.masonSheetSurface
 import com.denggl2.masonremote.ui.chat.ChatGlassDropdown
+import com.denggl2.masonremote.ui.localizedText as Text
+import com.denggl2.masonremote.ui.LocalRemoteStrings
 import dev.chrisbanes.haze.HazeState
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.flow.distinctUntilChanged
@@ -215,6 +217,7 @@ internal fun RemoteConversationListScreen(
         enabled = interfaceEffects.backdropBlurEnabled,
     )
     val pageBackground = MaterialTheme.colorScheme.background
+    val strings = LocalRemoteStrings.current
 
     LaunchedEffect(uiState.createdConversationThreadId) {
         val threadId = uiState.createdConversationThreadId ?: return@LaunchedEffect
@@ -428,8 +431,10 @@ internal fun RemoteConversationListScreen(
                             item("remote-list-error") {
                                 Text(
                                     text = buildString {
-                                        append(uiState.operationErrorMessage ?: uiState.errorMessage.orEmpty())
-                                        if (uiState.errorMessage != null) append("，点击重试")
+                                         append(strings.displayText(uiState.operationErrorMessage ?: uiState.errorMessage.orEmpty()))
+                                         if (uiState.errorMessage != null) {
+                                             append(strings.text("，点击重试", ", tap to retry"))
+                                         }
                                     },
                                     color = if (uiState.operationErrorMessage != null) {
                                         MaterialTheme.colorScheme.error
@@ -471,7 +476,7 @@ internal fun RemoteConversationListScreen(
                 RemoteBackButton(
                     onClick = onSettings,
                     icon = Icons.Outlined.Settings,
-                    contentDescription = "设置",
+                    contentDescription = strings.t("设置"),
                 )
                 Spacer(Modifier.width(8.dp))
                 RemoteFloatingSurface(
@@ -504,7 +509,7 @@ internal fun RemoteConversationListScreen(
                         Spacer(Modifier.width(2.dp))
                         Icon(
                             Icons.Outlined.ChevronRight,
-                            contentDescription = "连接状态",
+                            contentDescription = strings.t("连接状态"),
                             tint = MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.58f),
                             modifier = Modifier.size(19.dp),
                         )
@@ -547,6 +552,7 @@ internal fun RemoteBackButton(
     icon: androidx.compose.ui.graphics.vector.ImageVector = Icons.AutoMirrored.Outlined.ArrowBack,
     contentDescription: String = "返回",
 ) {
+    val strings = LocalRemoteStrings.current
     RemoteFloatingSurface(
         shape = CircleShape,
         cornerRadius = 24.dp,
@@ -560,7 +566,7 @@ internal fun RemoteBackButton(
         ) {
             Icon(
                 icon,
-                contentDescription = contentDescription,
+                contentDescription = strings.displayText(contentDescription),
                 tint = MaterialTheme.colorScheme.onBackground,
                 modifier = Modifier.size(23.dp),
             )
@@ -573,6 +579,7 @@ private fun RemoteNewConversationButton(
     onClick: () -> Unit,
     modifier: Modifier = Modifier,
 ) {
+    val strings = LocalRemoteStrings.current
     RemoteFloatingSurface(
         shape = CircleShape,
         cornerRadius = 24.dp,
@@ -588,7 +595,7 @@ private fun RemoteNewConversationButton(
                 imageVector = androidx.compose.ui.graphics.vector.ImageVector.vectorResource(
                     R.drawable.ic_remote_new_conversation,
                 ),
-                contentDescription = "新建远端对话",
+                contentDescription = strings.t("新建远端对话"),
                 tint = MaterialTheme.colorScheme.onBackground,
                 modifier = Modifier.size(20.dp),
             )
@@ -857,6 +864,7 @@ private fun RemoteNewSelector(
     expandedSelector: String?,
     onExpandedSelectorChange: (String?) -> Unit,
 ) {
+    val strings = LocalRemoteStrings.current
     val expanded = expandedSelector == selectorId
     val arrowRotation by animateFloatAsState(
         targetValue = if (expanded) 0f else 180f,
@@ -901,7 +909,7 @@ private fun RemoteNewSelector(
                 Spacer(Modifier.width(2.dp))
                 Icon(
                     Icons.Outlined.KeyboardArrowDown,
-                    contentDescription = title,
+                    contentDescription = strings.displayText(title),
                     tint = MaterialTheme.colorScheme.onSurfaceVariant,
                     modifier = Modifier.size(17.dp).graphicsLayer { rotationZ = arrowRotation },
                 )
@@ -940,7 +948,7 @@ private fun RemoteNewSelector(
                         if (item.id == selectedId) {
                             Icon(
                                 Icons.Outlined.Check,
-                                contentDescription = "当前选项",
+                                contentDescription = strings.t("当前选项"),
                             )
                         }
                     },
@@ -1031,8 +1039,9 @@ private fun remotePermissionLabel(value: String?): String = when (
 
 private fun LazyListScope.remoteConversationSection(title: String) {
     item(key = "remote-section-$title") {
+        val strings = LocalRemoteStrings.current
         Text(
-            text = title,
+            text = strings.displayText(title),
             color = MaterialTheme.colorScheme.onSurfaceVariant,
             fontSize = 12.sp,
             fontWeight = FontWeight.Medium,
@@ -1110,6 +1119,7 @@ private fun RemoteConversationListRow(
     onArchiveCancelled: () -> Unit,
     onArchiveConfirmed: () -> Unit,
 ) {
+    val strings = LocalRemoteStrings.current
     val density = LocalDensity.current
     val actionWidthPx = with(density) { RemoteConversationActionWidth.toPx() }
     val offsetX = remember(conversation.threadId) { Animatable(0f) }
@@ -1220,7 +1230,7 @@ private fun RemoteConversationListRow(
                             RemoteExecutionStatus.WAITING_FOR_PERMISSION -> {
                                 Spacer(Modifier.width(10.dp))
                                 RemoteShimmerStatusText(
-                                    text = "等待确认",
+                                    text = strings.t("等待确认"),
                                     baseColor = MaterialTheme.colorScheme.primary,
                                 )
                             }
@@ -1247,7 +1257,10 @@ private fun RemoteConversationListRow(
                         contentAlignment = Alignment.CenterEnd,
                     ) {
                         Text(
-                            text = formatRemoteConversationTime(conversation.updatedAt),
+                            text = formatRemoteConversationTime(
+                                updatedAt = conversation.updatedAt,
+                                english = strings.isEnglish,
+                            ),
                             color = MaterialTheme.colorScheme.onSurfaceVariant,
                             fontSize = 10.sp,
                             maxLines = 1,
@@ -1268,7 +1281,9 @@ private fun RemoteConversationListRow(
                         )
                         Spacer(Modifier.width(5.dp))
                         Text(
-                            text = conversation.latestAttachmentNames.joinToString("、"),
+                            text = conversation.latestAttachmentNames.joinToString(
+                                separator = if (strings.isEnglish) ", " else "、",
+                            ),
                             color = MaterialTheme.colorScheme.onSurfaceVariant,
                             fontSize = 11.sp,
                             maxLines = 1,
@@ -1277,7 +1292,7 @@ private fun RemoteConversationListRow(
                     }
                 } else {
                     Text(
-                        text = conversation.preview.ifBlank { "还没有消息" },
+                        text = strings.displayText(conversation.preview.ifBlank { "还没有消息" }),
                         color = MaterialTheme.colorScheme.onSurfaceVariant,
                         fontSize = 11.sp,
                         maxLines = 1,
@@ -1316,30 +1331,31 @@ private fun RemoteConversationActions(
     onArchiveConfirmed: () -> Unit,
     modifier: Modifier = Modifier,
 ) {
+    val strings = LocalRemoteStrings.current
     Row(modifier = modifier) {
         if (confirmingArchive) {
             RemoteConversationAction(
-                label = "确定",
+                label = strings.t("确定"),
                 enabled = enabled,
                 destructive = true,
                 onClick = onArchiveConfirmed,
                 modifier = Modifier.weight(1f),
             )
             RemoteConversationAction(
-                label = "取消",
+                label = strings.t("取消"),
                 enabled = enabled,
                 onClick = onArchiveCancelled,
                 modifier = Modifier.weight(1f),
             )
         } else {
             RemoteConversationAction(
-                label = if (conversation.isPinned) "取消置顶" else "置顶",
+                label = strings.t(if (conversation.isPinned) "取消置顶" else "置顶"),
                 enabled = enabled,
                 onClick = onTogglePinned,
                 modifier = Modifier.weight(1f),
             )
             RemoteConversationAction(
-                label = "归档",
+                label = strings.t("归档"),
                 enabled = enabled,
                 destructive = true,
                 onClick = onArchiveRequested,
@@ -1389,6 +1405,7 @@ internal fun formatRemoteConversationTime(
     updatedAt: Long,
     nowMillis: Long = System.currentTimeMillis(),
     zoneId: ZoneId = ZoneId.systemDefault(),
+    english: Boolean = false,
 ): String {
     if (updatedAt <= 0) return ""
     val timestampMillis = if (updatedAt < 100_000_000_000L) updatedAt * 1_000 else updatedAt
@@ -1396,9 +1413,9 @@ internal fun formatRemoteConversationTime(
     val today = Instant.ofEpochMilli(nowMillis).atZone(zoneId).toLocalDate()
     return when (val date = dateTime.toLocalDate()) {
         today -> dateTime.format(DateTimeFormatter.ofPattern("HH:mm"))
-        today.minusDays(1) -> "昨天"
+        today.minusDays(1) -> if (english) "Yesterday" else "昨天"
         else -> if (date.year == today.year) {
-            dateTime.format(DateTimeFormatter.ofPattern("M月d日"))
+            dateTime.format(DateTimeFormatter.ofPattern(if (english) "M/d" else "M月d日"))
         } else {
             dateTime.format(DateTimeFormatter.ofPattern("yyyy/M/d"))
         }
@@ -1408,7 +1425,7 @@ internal fun formatRemoteConversationTime(
 @Composable
 private fun BoxScope.RemoteListEmptyState(message: String) {
     Text(
-        text = message,
+        text = LocalRemoteStrings.current.displayText(message),
         color = MaterialTheme.colorScheme.onSurfaceVariant,
         fontSize = 14.sp,
         modifier = Modifier.align(Alignment.Center),
@@ -1420,17 +1437,18 @@ private fun BoxScope.RemoteListError(
     message: String,
     onRetry: () -> Unit,
 ) {
+    val strings = LocalRemoteStrings.current
     Column(
         modifier = Modifier.align(Alignment.Center),
         horizontalAlignment = Alignment.CenterHorizontally,
         verticalArrangement = Arrangement.spacedBy(6.dp),
     ) {
         Text(
-            text = message,
+            text = strings.displayText(message),
             color = MaterialTheme.colorScheme.onSurfaceVariant,
             fontSize = 13.sp,
         )
-        TextButton(onClick = onRetry) { Text("重试") }
+        TextButton(onClick = onRetry) { Text(strings.t("重试")) }
     }
 }
 

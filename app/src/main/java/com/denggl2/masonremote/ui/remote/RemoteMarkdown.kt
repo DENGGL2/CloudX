@@ -40,6 +40,7 @@ import androidx.compose.ui.text.style.TextDecoration
 import androidx.compose.ui.text.withStyle
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
+import com.denggl2.masonremote.ui.LocalRemoteStrings
 
 internal sealed interface RemoteMarkdownBlock {
     data class Text(val value: String, val style: RemoteMarkdownTextStyle) : RemoteMarkdownBlock
@@ -145,15 +146,17 @@ internal fun RemoteMarkdown(
     source: String,
     modifier: Modifier = Modifier,
     compact: Boolean = false,
+    translateAppText: Boolean = true,
 ) {
+    val visibleSource = if (translateAppText) LocalRemoteStrings.current.content(source) else source
     Column(modifier = modifier, verticalArrangement = Arrangement.spacedBy(if (compact) 5.dp else 8.dp)) {
-        parseRemoteMarkdown(source).forEachIndexed { index, block ->
+        parseRemoteMarkdown(visibleSource).forEachIndexed { index, block ->
             when (block) {
                 is RemoteMarkdownBlock.Text -> RemoteMarkdownTextBlock(block, Modifier.fillMaxWidth(), compact)
                 is RemoteMarkdownBlock.Code -> RemoteMarkdownCodeBlock(block, Modifier.fillMaxWidth(), compact)
                 is RemoteMarkdownBlock.Table -> RemoteMarkdownTable(block, Modifier.fillMaxWidth(), compact)
             }
-            if (index == 0 && source.isBlank()) Spacer(Modifier.height(1.dp))
+            if (index == 0 && visibleSource.isBlank()) Spacer(Modifier.height(1.dp))
         }
     }
 }

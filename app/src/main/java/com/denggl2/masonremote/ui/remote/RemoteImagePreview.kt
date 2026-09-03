@@ -43,7 +43,7 @@ import androidx.compose.material.icons.outlined.Share
 import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.material3.Icon
 import androidx.compose.material3.MaterialTheme
-import androidx.compose.material3.Text
+import androidx.compose.material3.Text as MaterialText
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.CompositionLocalProvider
 import androidx.compose.runtime.DisposableEffect
@@ -90,6 +90,9 @@ import com.denggl2.masonremote.ui.chat.glassClickable
 import com.denggl2.masonremote.ui.chat.masonGlassShadow
 import com.denggl2.masonremote.ui.chat.rememberChatBackdropState
 import com.denggl2.masonremote.ui.theme.LocalInterfaceEffects
+import com.denggl2.masonremote.ui.localizedText as Text
+import com.denggl2.masonremote.ui.LocalRemoteStrings
+import com.denggl2.masonremote.ui.RemoteStrings
 import java.io.ByteArrayInputStream
 import java.io.File
 import java.util.Locale
@@ -120,6 +123,7 @@ internal fun RemoteImagePreviewDialog(
     onDismiss: () -> Unit,
     onShare: () -> Unit,
 ) {
+    val strings = LocalRemoteStrings.current
     if (isRemoteSvgImage(image)) {
         RemoteSvgImagePreviewDialog(image = image, onDismiss = onDismiss, onShare = onShare)
         return
@@ -245,13 +249,13 @@ internal fun RemoteImagePreviewDialog(
             ) {
                 RemoteImagePreviewAction(
                     icon = Icons.AutoMirrored.Outlined.ArrowBack,
-                    contentDescription = "返回",
+                    contentDescription = strings.t("返回"),
                     enabled = true,
                     size = 44.dp,
                     onClick = onDismiss,
                 )
                 Text(
-                    text = "图片预览",
+                    text = strings.t("图片预览"),
                     color = MaterialTheme.colorScheme.onBackground,
                     fontSize = 15.sp,
                     fontWeight = FontWeight.Medium,
@@ -273,14 +277,14 @@ internal fun RemoteImagePreviewDialog(
             ) {
                 RemoteImagePreviewAction(
                     icon = Icons.Outlined.FileDownload,
-                    contentDescription = if (saveAction.saving) "正在保存图片" else "保存图片到本地",
+                    contentDescription = strings.t(if (saveAction.saving) "正在保存图片" else "保存图片到本地"),
                     enabled = !saveAction.saving && bitmapState !is RemoteBitmapState.Loading,
                     showProgress = saveAction.saving,
                     onClick = saveAction.onSave,
                 )
                 RemoteImagePreviewAction(
                     icon = Icons.Outlined.Share,
-                    contentDescription = "分享图片",
+                    contentDescription = strings.t("分享图片"),
                     enabled = bitmapState !is RemoteBitmapState.Loading,
                     onClick = onShare,
                 )
@@ -309,6 +313,7 @@ private fun RemoteImagePreviewAction(
     size: androidx.compose.ui.unit.Dp = 52.dp,
     onClick: () -> Unit,
 ) {
+    val strings = LocalRemoteStrings.current
     val effects = LocalInterfaceEffects.current
     Box(
         modifier = Modifier
@@ -340,7 +345,7 @@ private fun RemoteImagePreviewAction(
         } else {
             Icon(
                 icon,
-                contentDescription = contentDescription,
+                contentDescription = strings.displayText(contentDescription),
                 tint = MaterialTheme.colorScheme.onBackground.copy(alpha = if (enabled) 1f else 0.42f),
                 modifier = Modifier.size(22.dp),
             )
@@ -471,6 +476,7 @@ private data class RemoteImageSaveAction(val saving: Boolean, val onSave: () -> 
 @Composable
 private fun rememberRemoteImageSaveAction(image: RemotePreviewImage): RemoteImageSaveAction {
     val context = LocalContext.current
+    val strings = LocalRemoteStrings.current
     val scope = rememberCoroutineScope()
     var saving by remember(image.attachmentId) { mutableStateOf(false) }
     val performSave = {
@@ -482,8 +488,8 @@ private fun rememberRemoteImageSaveAction(image: RemotePreviewImage): RemoteImag
                 Toast.makeText(
                     context,
                     result.fold(
-                        onSuccess = { saved -> "已保存到 ${saved.directory}" },
-                        onFailure = { error -> "保存失败：${error.message ?: "无法写入图片"}" },
+                        onSuccess = { saved -> strings.displayText("已保存到 ${saved.directory}") },
+                        onFailure = { error -> strings.displayText("保存失败：${error.message ?: "无法写入图片"}") },
                     ),
                     Toast.LENGTH_SHORT,
                 ).show()
@@ -493,7 +499,7 @@ private fun rememberRemoteImageSaveAction(image: RemotePreviewImage): RemoteImag
     val storagePermissionLauncher = rememberLauncherForActivityResult(
         ActivityResultContracts.RequestPermission(),
     ) { granted ->
-        if (granted) performSave() else Toast.makeText(context, "需要存储权限才能保存图片", Toast.LENGTH_SHORT).show()
+        if (granted) performSave() else Toast.makeText(context, strings.t("需要存储权限才能保存图片"), Toast.LENGTH_SHORT).show()
     }
     return RemoteImageSaveAction(
         saving = saving,
@@ -562,7 +568,7 @@ private suspend fun saveRemoteImageToGallery(
     }
 }
 
-internal fun shareRemoteImage(context: Context, image: RemotePreviewImage) {
+internal fun shareRemoteImage(context: Context, image: RemotePreviewImage, strings: RemoteStrings) {
     runCatching {
         val shareDirectory = File(context.cacheDir, "remote-share").apply { mkdirs() }
         val file = File(shareDirectory, normalizedRemoteDisplayName(image.name, normalizedRemoteMimeType(image)))
@@ -575,11 +581,11 @@ internal fun shareRemoteImage(context: Context, image: RemotePreviewImage) {
                     putExtra(Intent.EXTRA_STREAM, uri)
                     addFlags(Intent.FLAG_GRANT_READ_URI_PERMISSION)
                 },
-                "分享图片",
+                strings.t("分享图片"),
             ),
         )
     }.onFailure { error ->
-        Toast.makeText(context, "分享失败：${error.message ?: "无法准备图片"}", Toast.LENGTH_SHORT).show()
+        Toast.makeText(context, strings.displayText("分享失败：${error.message ?: "无法准备图片"}"), Toast.LENGTH_SHORT).show()
     }
 }
 
