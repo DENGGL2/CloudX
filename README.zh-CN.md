@@ -10,6 +10,16 @@
 
 [**下载最新版 CloudX APK**](https://github.com/DENGGL2/CloudX/releases/download/v0.1.23/CloudX-0.1.23-arm64-v8a-debug.apk)
 
+## 界面截图
+
+| 1. 选择配对方式 | 2. 外观与语言设置 | 3. 已连接会话列表 |
+|:--:|:--:|:--:|
+| [![选择 Cloudflare Tunnel 或 WebRTC Direct](docs/screenshots/01-pairing-methods.png)](docs/screenshots/01-pairing-methods.png) | [![调整外观、语言与任务选项](docs/screenshots/02-appearance-settings.png)](docs/screenshots/02-appearance-settings.png) | [![查看已连接电脑上的会话](docs/screenshots/03-connected-conversations.png)](docs/screenshots/03-connected-conversations.png) |
+
+| 4. 权限确认与运行状态 | 5. 会话置顶与归档 |
+|:--:|:--:|
+| [![在对话详情中处理权限确认](docs/screenshots/04-approval-request.png)](docs/screenshots/04-approval-request.png) | [![通过侧滑操作置顶或归档会话](docs/screenshots/05-conversation-actions.png)](docs/screenshots/05-conversation-actions.png) |
+
 ## 主要功能
 
 - 在手机上查看会话列表、对话详情、执行过程和任务结果。
@@ -48,11 +58,6 @@
 
 无论选择哪种网络传输方式，移动端都使用相同的配对、设备身份、权限、会话、
 对话、确认和附件协议。
-
-## 截图
-
-此处预留产品截图展示区域。截图统一放在 `docs/screenshots/` 下，并为每张图
-补充简短的使用场景说明。
 
 ## 使用流程
 
