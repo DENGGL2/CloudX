@@ -28,16 +28,17 @@ import androidx.compose.foundation.gestures.detectTransformGestures
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Row
-import androidx.compose.foundation.layout.Spacer
+import androidx.compose.foundation.layout.WindowInsets
+import androidx.compose.foundation.layout.asPaddingValues
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
+import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.navigationBarsPadding
 import androidx.compose.foundation.layout.padding
+import androidx.compose.foundation.layout.safeDrawing
 import androidx.compose.foundation.layout.size
-import androidx.compose.foundation.layout.statusBarsPadding
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.material.icons.Icons
-import androidx.compose.material.icons.automirrored.outlined.ArrowBack
 import androidx.compose.material.icons.outlined.FileDownload
 import androidx.compose.material.icons.outlined.Share
 import androidx.compose.material3.CircularProgressIndicator
@@ -239,34 +240,10 @@ internal fun RemoteImagePreviewDialog(
                     }
                 }
 
-            Row(
-                modifier = Modifier
-                    .fillMaxWidth()
-                    .statusBarsPadding()
-                    .padding(horizontal = 10.dp, vertical = 8.dp)
-                    .align(Alignment.TopCenter),
-                verticalAlignment = Alignment.CenterVertically,
-            ) {
-                RemoteImagePreviewAction(
-                    icon = Icons.AutoMirrored.Outlined.ArrowBack,
-                    contentDescription = strings.t("返回"),
-                    enabled = true,
-                    size = 44.dp,
-                    onClick = onDismiss,
-                )
-                Text(
-                    text = strings.t("图片预览"),
-                    color = MaterialTheme.colorScheme.onBackground,
-                    fontSize = 15.sp,
-                    fontWeight = FontWeight.Medium,
-                    maxLines = 1,
-                    overflow = TextOverflow.Ellipsis,
-                    modifier = Modifier
-                        .weight(1f)
-                        .padding(horizontal = 12.dp),
-                )
-                Spacer(Modifier.size(44.dp))
-            }
+            RemoteImagePreviewHeader(
+                onDismiss = onDismiss,
+                modifier = Modifier.align(Alignment.TopCenter),
+            )
 
             Row(
                 modifier = Modifier
@@ -350,6 +327,39 @@ private fun RemoteImagePreviewAction(
                 modifier = Modifier.size(22.dp),
             )
         }
+    }
+}
+
+@Composable
+private fun RemoteImagePreviewHeader(
+    onDismiss: () -> Unit,
+    modifier: Modifier = Modifier,
+) {
+    val strings = LocalRemoteStrings.current
+    val topInset = WindowInsets.safeDrawing.asPaddingValues().calculateTopPadding()
+    val headerTop = topInset + 8.dp
+    val headerHeight = 48.dp
+    Box(
+        modifier = modifier
+            .fillMaxWidth()
+            .padding(top = headerTop)
+            .height(headerHeight),
+    ) {
+        Text(
+            text = strings.t("图片预览"),
+            color = MaterialTheme.colorScheme.onBackground,
+            fontSize = 20.sp,
+            fontWeight = FontWeight.SemiBold,
+            maxLines = 1,
+            overflow = TextOverflow.Ellipsis,
+            modifier = Modifier.align(Alignment.Center),
+        )
+        RemoteBackButton(
+            onClick = onDismiss,
+            modifier = Modifier
+                .align(Alignment.CenterStart)
+                .padding(start = 8.dp),
+        )
     }
 }
 
@@ -675,26 +685,10 @@ private fun RemoteSvgImagePreviewDialog(
                 )
             }
                 }
-            Row(
-                modifier = Modifier
-                    .fillMaxWidth()
-                    .statusBarsPadding()
-                    .padding(horizontal = 10.dp, vertical = 8.dp)
-                    .align(Alignment.TopCenter),
-                verticalAlignment = Alignment.CenterVertically,
-            ) {
-                RemoteImagePreviewAction(Icons.AutoMirrored.Outlined.ArrowBack, "返回", true, size = 44.dp, onClick = onDismiss)
-                Text(
-                    "图片预览",
-                    color = MaterialTheme.colorScheme.onBackground,
-                    fontSize = 15.sp,
-                    fontWeight = FontWeight.Medium,
-                    maxLines = 1,
-                    overflow = TextOverflow.Ellipsis,
-                    modifier = Modifier.weight(1f).padding(horizontal = 12.dp),
-                )
-                Spacer(Modifier.size(44.dp))
-            }
+            RemoteImagePreviewHeader(
+                onDismiss = onDismiss,
+                modifier = Modifier.align(Alignment.TopCenter),
+            )
             Row(
                 modifier = Modifier
                     .align(Alignment.BottomCenter)

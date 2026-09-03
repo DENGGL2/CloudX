@@ -7,10 +7,13 @@ import androidx.compose.foundation.horizontalScroll
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
+import androidx.compose.foundation.layout.IntrinsicSize
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
+import androidx.compose.foundation.layout.fillMaxHeight
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
+import androidx.compose.foundation.layout.heightIn
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.rememberScrollState
@@ -296,12 +299,14 @@ private fun RemoteMarkdownTableRow(cells: List<String>, header: Boolean, compact
                 if (header) MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.7f)
                 else MaterialTheme.colorScheme.surface.copy(alpha = 0.5f),
             )
-            .height(if (compact) 32.dp else 38.dp),
+            .height(IntrinsicSize.Min)
+            .heightIn(min = if (compact) 32.dp else 38.dp),
     ) {
         cells.forEach { cell ->
             Box(
                 modifier = Modifier
                     .width(if (compact) 140.dp else 150.dp)
+                    .fillMaxHeight()
                     .border(0.5.dp, MaterialTheme.colorScheme.outline.copy(alpha = 0.18f))
                     .padding(horizontal = if (compact) 7.dp else 9.dp, vertical = if (compact) 6.dp else 8.dp),
             ) {

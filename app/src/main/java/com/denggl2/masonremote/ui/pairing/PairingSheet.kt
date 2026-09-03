@@ -8,6 +8,7 @@ import androidx.compose.foundation.background
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
+import androidx.compose.foundation.layout.PaddingValues
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
@@ -19,6 +20,8 @@ import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.outlined.ErrorOutline
 import androidx.compose.material.icons.outlined.QrCodeScanner
+import androidx.compose.material3.Button
+import androidx.compose.material3.ButtonDefaults
 import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.compose.material3.Icon
@@ -54,7 +57,7 @@ import com.denggl2.masonremote.transport.TransportMode
 import com.denggl2.masonremote.transport.displayName
 import com.denggl2.masonremote.transport.parsePairingOffer
 import com.denggl2.masonremote.ui.FigmaSvgAsset
-import com.denggl2.masonremote.ui.chat.ChatGlassControl
+import com.denggl2.masonremote.ui.chat.masonGlassShadow
 import com.denggl2.masonremote.ui.theme.MASON_SHEET_SCRIM_ALPHA
 import com.denggl2.masonremote.ui.theme.MasonSheetShape
 import com.denggl2.masonremote.ui.theme.masonOverlayWindowInsets
@@ -298,13 +301,13 @@ private fun PairingSheetContent(
                                 contentDescription = null,
                                 tint = PairingSheetColors.ScannerContent,
                             )
-                            ChatGlassControl(
+                            PairingPrimaryButton(
                                 onClick = onRequestPermission,
                                 modifier = Modifier
                                     .width(160.dp)
                                     .height(44.dp),
-                                contentColor = PairingSheetColors.Button,
-                            ) { Text(strings.t("允许相机权限")) }
+                                label = strings.t("允许相机权限"),
+                            )
                         }
                     }
                 }
@@ -385,15 +388,15 @@ private fun PairingSheetContent(
                         .align(Alignment.TopCenter)
                         .offset(y = 226.dp),
                 )
-                ChatGlassControl(
+                PairingPrimaryButton(
                     onClick = onEnterConversation,
                     modifier = Modifier
                         .align(Alignment.TopCenter)
                         .offset(y = 310.dp)
                         .width(232.dp)
                         .height(44.dp),
-                    contentColor = PairingSheetColors.Button,
-                ) { Text(strings.t("进入对话"), fontSize = 14.sp, fontWeight = FontWeight.Medium) }
+                    label = strings.t("进入对话"),
+                )
             }
             PairingStep.ERROR -> {
                 Column(
@@ -406,13 +409,13 @@ private fun PairingSheetContent(
                 ) {
                     Icon(Icons.Outlined.ErrorOutline, contentDescription = null, tint = PairingSheetColors.Text)
                     Text(errorMessage, color = PairingSheetColors.Secondary, textAlign = TextAlign.Center, fontSize = 14.sp)
-                    ChatGlassControl(
+                    PairingPrimaryButton(
                         onClick = onRetry,
                         modifier = Modifier
                             .width(160.dp)
                             .height(44.dp),
-                        contentColor = PairingSheetColors.Button,
-                    ) { Text(strings.t("重新扫码")) }
+                        label = strings.t("重新扫码"),
+                    )
                 }
             }
         }
@@ -431,18 +434,44 @@ private fun PairingButtons(
         horizontalArrangement = Arrangement.spacedBy(20.dp),
         verticalAlignment = Alignment.CenterVertically,
     ) {
-        ChatGlassControl(
+        PairingPrimaryButton(
             onClick = onCancel,
             modifier = Modifier
                 .size(width = 110.dp, height = 44.dp),
-            contentColor = MaterialTheme.colorScheme.onSurface,
-        ) { Text(LocalRemoteStrings.current.t("返回"), fontSize = 14.sp) }
-        ChatGlassControl(
+            label = LocalRemoteStrings.current.t("返回"),
+        )
+        PairingPrimaryButton(
             onClick = onConfirm,
             modifier = Modifier
                 .size(width = 110.dp, height = 44.dp),
-            contentColor = PairingSheetColors.Button,
-    ) { Text(confirmLabel, fontSize = 14.sp, fontWeight = FontWeight.Medium) }
+            label = confirmLabel,
+        )
+    }
+}
+
+@Composable
+private fun PairingPrimaryButton(
+    label: String,
+    onClick: () -> Unit,
+    modifier: Modifier = Modifier,
+) {
+    Button(
+        onClick = onClick,
+        modifier = modifier.masonGlassShadow(cornerRadius = 22.dp),
+        shape = RoundedCornerShape(22.dp),
+        contentPadding = PaddingValues(horizontal = 8.dp, vertical = 0.dp),
+        colors = ButtonDefaults.buttonColors(
+            containerColor = Color.Black,
+            contentColor = Color.White,
+        ),
+    ) {
+        Text(
+            text = label,
+            color = Color.White,
+            fontSize = 14.sp,
+            fontWeight = FontWeight.Medium,
+            textAlign = TextAlign.Center,
+        )
     }
 }
 
@@ -461,8 +490,6 @@ private fun formatPairingExpiry(expiresAt: Long?, nowMillis: Long, english: Bool
 }
 
 private object PairingSheetColors {
-    val Button: Color
-        @Composable get() = MaterialTheme.colorScheme.primary
     val Handle: Color
         @Composable get() = MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.72f)
     val Scanner: Color
