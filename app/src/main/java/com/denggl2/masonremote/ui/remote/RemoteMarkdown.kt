@@ -30,6 +30,8 @@ import androidx.compose.runtime.setValue
 import androidx.compose.runtime.getValue
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
+import androidx.compose.ui.draw.drawBehind
+import androidx.compose.ui.geometry.Size
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.input.pointer.pointerInput
 import androidx.compose.ui.layout.Layout
@@ -189,11 +191,22 @@ private fun RemoteMarkdownTextBlock(
         )
     }
     val textModifier = when (block.style) {
-        RemoteMarkdownTextStyle.QUOTE -> modifier
-            .clip(RoundedCornerShape(2.dp))
-            .background(MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.34f))
-            .border(1.dp, MaterialTheme.colorScheme.primary.copy(alpha = 0.26f), RoundedCornerShape(2.dp))
-            .padding(start = 10.dp, end = 8.dp, top = 5.dp, bottom = 5.dp)
+        RemoteMarkdownTextStyle.QUOTE -> {
+            val quoteShape = RoundedCornerShape(4.dp)
+            val quoteBackground = MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.62f)
+            val quoteStroke = MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.90f)
+            modifier
+                .clip(quoteShape)
+                .background(quoteBackground)
+                .drawBehind {
+                    val strokeWidth = 3.dp.toPx()
+                    drawRect(
+                        color = quoteStroke,
+                        size = Size(strokeWidth, size.height),
+                    )
+                }
+                .padding(start = 14.dp, end = 8.dp, top = 6.dp, bottom = 6.dp)
+        }
         RemoteMarkdownTextStyle.DIFF -> modifier
             .clip(RoundedCornerShape(6.dp))
             .background(

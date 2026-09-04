@@ -8,7 +8,7 @@
 
 ## 下载
 
-[**下载最新版 CloudX APK**](https://github.com/DENGGL2/CloudX/releases/download/v0.1.23/CloudX-0.1.23-arm64-v8a-debug.apk)
+[**下载最新版 CloudX APK**](https://github.com/DENGGL2/CloudX/releases/download/v0.1.24/CloudX-0.1.24-arm64-v8a-debug.apk)
 
 ## 界面截图
 
@@ -82,8 +82,9 @@ APK 输出到 `app/build/outputs/apk/debug/`。
 
 ### 版本规则
 
-- `versionName` 是用户可见的语义化版本号，功能和修复版本递增补丁号。
-- `versionCode` 是 Android 使用的单调递增更新编号，每个分发版本都必须增加。
+- `versionName` 遵循 `主版本.次版本.修订号`：不兼容变更递增主版本，兼容的新功能递增次版本，兼容的修复、视觉调整和文档更新递增修订号。
+- `versionCode` 是 Android 使用的单调递增整数；每次发布可分发 APK 都递增 1，不回退、不复用。
+- 每次发布同步更新 `versionName`、`versionCode`、`v<versionName>` Git 标签和 GitHub Release；README 的下载链接始终指向最新 Release。
 
 ## Windows 桌面端前置条件
 
